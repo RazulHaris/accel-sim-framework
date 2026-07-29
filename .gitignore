@@ -16,3 +16,16 @@ compile_commands.json
 .cache
 .cursorrules
 CLAUDE.md
+
+# Local Python virtual environments
+venv/
+
+# Experiment scratch output (simulation logs/stats/job dirs)
+/*.txt
+/*.log
+*.swp
+runs/*/*.txt
+runs/rodinia_3/rodinia_gaussian_s_256txt
+uncoal_final/
+uncoal_stats/
+util/tracer_nvbit/*.tar.bz2

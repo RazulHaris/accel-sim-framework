@@ -675,9 +675,9 @@ parboil:
             - args: -i ./data/large/input/Dubcova3.mtx.bin,./data/large/input/vector.bin -o Dubcova3.mtx.out
               accel-sim-mem: 2G
 
-        - parboil-mri-gridding:
-            - args: -i ./data/small/input/small.uks -o output.txt -- 32 0
-              accel-sim-mem: 1G
+#        - parboil-mri-gridding:
+#            - args: -i ./data/small/input/small.uks -o output.txt -- 32 0
+#              accel-sim-mem: 1G
 
         - parboil-bfs:
 #            - args: -i ./data/1M/input/graph_input.dat -o bfs-1M.out
