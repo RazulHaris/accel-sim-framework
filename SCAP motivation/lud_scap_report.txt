@@ -1,0 +1,38 @@
+
+=== 0. Dataset ===
+rows 2,048 | warp-loads 688 | static load PCs 61 | SMs 24
+incomplete warp-loads 0 | D column != rows seen 0 | addr/mask sector mismatch 0 | bad rows 0
+
+=== 1. Coalescing degree D (sectors per warp-load) ===
+dense(1-4)        100.0% of warp-loads    100.0% of sector traffic
+moderate(5-12)      0.0% of warp-loads      0.0% of sector traffic
+scattered(13+)      0.0% of warp-loads      0.0% of sector traffic
+
+=== 2. L1D outcome per sector ===
+MISS              100.0%
+
+=== 3. Does the footprint shape repeat across warps? ===
+warp-loads whose shape equals their PC's most common shape: 97.4%
+sector traffic from PCs whose top shape covers >= 90% of their warp-loads: 100.0%
+sector traffic from PCs whose top shape covers >= 50% of their warp-loads: 100.0%
+
+=== 4. Sector masks inside 128 B lines ===
+mask 0011 (s3..s0)    50.0% of touched lines
+mask 1100 (s3..s0)    50.0% of touched lines
+partial lines (mask != 1111): 100.0%
+bytes a whole-line fetcher moves vs sectors actually requested: 2.00x
+
+=== 5. Inter-warp delta (consecutive warp-loads, same SM and PC) ===
+delta equals the previous delta: 25.4% of 252 pairs
+
+=== 6. Last-value predictor: predict warp n+1 from warp n ===
+predictor                           coverage  accuracy  sectors fetched / used
+SCAP (shape + delta, sectors)          25.4%     25.4%                3.94x
+same shape, whole lines                25.4%     12.7%                7.88x
+first address only, 1 line             12.7%     12.7%                7.88x
+
+=== 7. Top PCs by sector traffic (all PCs with >= 32 warp-loads in lud_per_pc.csv) ===
+        pc traffic%  meanD  shape%  mask  mask%  lineX  dRep%   cov%   acc%
+     0x130     22.5    3.9    94.9  1100   63.5   2.00   16.7   16.7   16.7
+     0x140     22.5    3.9    94.9  0011   71.3   2.00   50.0   50.0   50.0
+     0x1e0     22.5    3.9    94.9  1100   63.5   2.00    9.5    9.5    9.5

@@ -1,0 +1,48 @@
+
+=== 0. Dataset ===
+rows 480,000 | warp-loads 30,016 | static load PCs 8 | SMs 108
+incomplete warp-loads 0 | D column != rows seen 0 | addr/mask sector mismatch 0 | bad rows 0
+
+=== 1. Coalescing degree D (sectors per warp-load) ===
+dense(1-4)          0.0% of warp-loads      0.0% of sector traffic
+moderate(5-12)      0.1% of warp-loads      0.1% of sector traffic
+scattered(13+)     99.9% of warp-loads     99.9% of sector traffic
+
+=== 2. L1D outcome per sector ===
+MISS               96.0%
+HIT                 4.0%
+
+=== 3. Does the footprint shape repeat across warps? ===
+warp-loads whose shape equals their PC's most common shape: 50.0%
+sector traffic from PCs whose top shape covers >= 90% of their warp-loads: 0.0%
+sector traffic from PCs whose top shape covers >= 50% of their warp-loads: 100.0%
+
+=== 4. Sector masks inside 128 B lines ===
+mask 0110 (s3..s0)    25.9% of touched lines
+mask 1101 (s3..s0)    24.3% of touched lines
+mask 1011 (s3..s0)    24.3% of touched lines
+mask 1010 (s3..s0)     5.3% of touched lines
+mask 0101 (s3..s0)     5.3% of touched lines
+mask 0001 (s3..s0)     3.7% of touched lines
+partial lines (mask != 1111): 100.0%
+bytes a whole-line fetcher moves vs sectors actually requested: 1.69x
+
+=== 5. Inter-warp delta (consecutive warp-loads, same SM and PC) ===
+delta equals the previous delta: 26.0% of 28,288 pairs
+
+=== 6. Last-value predictor: predict warp n+1 from warp n ===
+predictor                           coverage  accuracy  sectors fetched / used
+SCAP (shape + delta, sectors)          26.0%     26.0%                3.85x
+same shape, whole lines                26.0%     15.4%                6.50x
+first address only, 1 line              3.0%     11.9%                8.43x
+
+=== 7. Top PCs by sector traffic (all PCs with >= 32 warp-loads in nn_per_pc.csv) ===
+        pc traffic%  meanD  shape%  mask  mask%  lineX  dRep%   cov%   acc%
+      0xb0     12.5   16.0    50.0  0110   25.9   1.69   28.3   28.3   28.3
+      0xc0     12.5   16.0    50.0  0110   25.9   1.69   28.3   28.3   28.3
+      0xd0     12.5   16.0    50.0  0110   25.9   1.69   20.2   20.1   20.1
+      0xf0     12.5   16.0    50.0  1101   25.9   1.69   28.3   28.3   28.3
+      0xe0     12.5   16.0    50.0  0110   25.9   1.69   22.8   22.8   22.8
+     0x100     12.5   16.0    50.0  0110   25.9   1.69   25.3   25.4   25.4
+     0x110     12.5   16.0    50.0  0110   25.9   1.69   27.0   27.1   27.0
+     0x120     12.5   16.0    50.0  0110   25.9   1.69   27.5   27.5   27.5

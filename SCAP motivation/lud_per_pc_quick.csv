@@ -1,0 +1,4 @@
+pc,warp_loads,sectors,mean_D,D_class,top_shape_share,top_line_mask,top_line_mask_share,line_overfetch_x,top_delta,top_delta_share,delta_repeat_rate,scap_coverage,scap_accuracy,sector_miss_share
+0x130,118,460,3.9,dense(1-4),0.949,1100,0.635,2.0,512,0.571,0.167,0.167,0.167,0.0
+0x140,118,460,3.9,dense(1-4),0.949,0011,0.713,2.0,512,0.714,0.5,0.5,0.5,0.0
+0x1e0,118,460,3.9,dense(1-4),0.949,1100,0.635,2.0,512,0.286,0.095,0.095,0.095,0.0

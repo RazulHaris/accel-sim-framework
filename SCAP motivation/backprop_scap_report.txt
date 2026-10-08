@@ -1,0 +1,49 @@
+
+=== 0. Dataset ===
+rows 62,479 | warp-loads 18,437 | static load PCs 14 | SMs 108
+incomplete warp-loads 0 | D column != rows seen 0 | addr/mask sector mismatch 0 | bad rows 0
+
+=== 1. Coalescing degree D (sectors per warp-load) ===
+dense(1-4)         55.6% of warp-loads     34.4% of sector traffic
+moderate(5-12)     44.4% of warp-loads     65.6% of sector traffic
+scattered(13+)      0.0% of warp-loads      0.0% of sector traffic
+
+=== 2. L1D outcome per sector ===
+MISS               69.7%
+HIT                30.3%
+
+=== 3. Does the footprint shape repeat across warps? ===
+warp-loads whose shape equals their PC's most common shape: 83.4%
+sector traffic from PCs whose top shape covers >= 90% of their warp-loads: 85.2%
+sector traffic from PCs whose top shape covers >= 50% of their warp-loads: 93.4%
+
+=== 4. Sector masks inside 128 B lines ===
+mask 0111 (s3..s0)    21.3% of touched lines
+mask 0001 (s3..s0)    18.7% of touched lines
+mask 1111 (s3..s0)    14.2% of touched lines
+mask 1000 (s3..s0)    13.1% of touched lines
+mask 0011 (s3..s0)     8.0% of touched lines
+mask 1100 (s3..s0)     8.0% of touched lines
+partial lines (mask != 1111): 85.8%
+bytes a whole-line fetcher moves vs sectors actually requested: 1.85x
+
+=== 5. Inter-warp delta (consecutive warp-loads, same SM and PC) ===
+delta equals the previous delta: 39.1% of 16,488 pairs
+
+=== 6. Last-value predictor: predict warp n+1 from warp n ===
+predictor                           coverage  accuracy  sectors fetched / used
+SCAP (shape + delta, sectors)          32.4%     32.5%                3.08x
+same shape, whole lines                36.9%     19.9%                5.01x
+first address only, 1 line             29.6%     25.2%                3.98x
+
+=== 7. Top PCs by sector traffic (all PCs with >= 32 warp-loads in backprop_per_pc.csv) ===
+        pc traffic%  meanD  shape%  mask  mask%  lineX  dRep%   cov%   acc%
+     0x180     16.4    5.0   100.0  1111   25.0   1.60    4.4   11.2   11.2
+      0xf0     16.4    5.0   100.0  1111   25.0   1.60    3.3   10.0   10.0
+     0x120     16.4    5.0   100.0  1111   25.0   1.60    5.3   11.5   11.5
+     0x1e0     16.4    5.0   100.0  1111   25.0   1.60    2.3    4.6    4.6
+      0xe0      9.8    3.0   100.0  0111  100.0   1.33  100.0  100.0  100.0
+     0x1d0      9.8    3.0   100.0  0111  100.0   1.33  100.0  100.0  100.0
+      0x90      6.6    2.0     0.2  0001   57.4   4.00   86.2   70.2   70.2
+     0x110      4.1    1.2    75.0  0001   23.5   3.40   27.3   27.6   28.5
+     0x1f0      4.1    1.2    75.0  0001   23.5   3.40   22.6   21.2   21.4

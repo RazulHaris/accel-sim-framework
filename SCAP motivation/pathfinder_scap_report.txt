@@ -1,0 +1,41 @@
+
+=== 0. Dataset ===
+rows 3,722 | warp-loads 759 | static load PCs 2 | SMs 20
+incomplete warp-loads 0 | D column != rows seen 0 | addr/mask sector mismatch 0 | bad rows 0
+
+=== 1. Coalescing degree D (sectors per warp-load) ===
+dense(1-4)         10.7% of warp-loads      8.4% of sector traffic
+moderate(5-12)     89.3% of warp-loads     91.6% of sector traffic
+scattered(13+)      0.0% of warp-loads      0.0% of sector traffic
+
+=== 2. L1D outcome per sector ===
+MISS              100.0%
+
+=== 3. Does the footprint shape repeat across warps? ===
+warp-loads whose shape equals their PC's most common shape: 81.8%
+sector traffic from PCs whose top shape covers >= 90% of their warp-loads: 17.7%
+sector traffic from PCs whose top shape covers >= 50% of their warp-loads: 100.0%
+
+=== 4. Sector masks inside 128 B lines ===
+mask 1111 (s3..s0)    22.9% of touched lines
+mask 0001 (s3..s0)    19.5% of touched lines
+mask 1000 (s3..s0)    13.2% of touched lines
+mask 0111 (s3..s0)    11.8% of touched lines
+mask 1100 (s3..s0)    11.6% of touched lines
+mask 0011 (s3..s0)    10.4% of touched lines
+partial lines (mask != 1111): 77.1%
+bytes a whole-line fetcher moves vs sectors actually requested: 1.70x
+
+=== 5. Inter-warp delta (consecutive warp-loads, same SM and PC) ===
+delta equals the previous delta: 12.7% of 683 pairs
+
+=== 6. Last-value predictor: predict warp n+1 from warp n ===
+predictor                           coverage  accuracy  sectors fetched / used
+SCAP (shape + delta, sectors)          14.3%     14.2%                7.04x
+same shape, whole lines                17.5%     10.4%                9.60x
+first address only, 1 line              7.6%      9.3%               10.71x
+
+=== 7. Top PCs by sector traffic (all PCs with >= 32 warp-loads in pathfinder_per_pc.csv) ===
+        pc traffic%  meanD  shape%  mask  mask%  lineX  dRep%   cov%   acc%
+     0x300     82.3    4.9    79.3  1111   21.3   1.71    7.3    8.9    8.8
+      0xe0     17.7    5.0    93.9  1111   30.5   1.67   45.8   46.0   46.0

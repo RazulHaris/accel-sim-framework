@@ -1,0 +1,55 @@
+
+=== 0. Dataset ===
+rows 4,224 | warp-loads 1,216 | static load PCs 35 | SMs 64
+incomplete warp-loads 0 | D column != rows seen 0 | addr/mask sector mismatch 0 | bad rows 0
+
+=== 1. Coalescing degree D (sectors per warp-load) ===
+dense(1-4)         94.7% of warp-loads     75.8% of sector traffic
+moderate(5-12)      0.0% of warp-loads      0.0% of sector traffic
+scattered(13+)      5.3% of warp-loads     24.2% of sector traffic
+
+=== 2. L1D outcome per sector ===
+MISS               98.5%
+HIT                 1.5%
+
+=== 3. Does the footprint shape repeat across warps? ===
+warp-loads whose shape equals their PC's most common shape: 97.7%
+sector traffic from PCs whose top shape covers >= 90% of their warp-loads: 96.1%
+sector traffic from PCs whose top shape covers >= 50% of their warp-loads: 100.0%
+
+=== 4. Sector masks inside 128 B lines ===
+mask 0001 (s3..s0)    21.4% of touched lines
+mask 1000 (s3..s0)    19.0% of touched lines
+mask 1100 (s3..s0)    10.7% of touched lines
+mask 0100 (s3..s0)    10.7% of touched lines
+mask 0111 (s3..s0)     9.5% of touched lines
+mask 0011 (s3..s0)     9.5% of touched lines
+partial lines (mask != 1111): 100.0%
+bytes a whole-line fetcher moves vs sectors actually requested: 2.55x
+
+=== 5. Inter-warp delta (consecutive warp-loads, same SM and PC) ===
+delta equals the previous delta: 0.0% of 0 pairs
+
+=== 6. Last-value predictor: predict warp n+1 from warp n ===
+predictor                           coverage  accuracy  sectors fetched / used
+SCAP (shape + delta, sectors)           0.0%      0.0%                0.00x
+same shape, whole lines                 0.0%      0.0%                0.00x
+first address only, 1 line              0.0%      0.0%                0.00x
+
+=== 7. Top PCs by sector traffic (all PCs with >= 32 warp-loads in nw_per_pc.csv) ===
+        pc traffic%  meanD  shape%  mask  mask%  lineX  dRep%   cov%   acc%
+     0x590     24.2   16.0   100.0  0001   25.0   4.00    0.0    0.0    0.0
+     0x610      4.5    3.0   100.0  0111   33.3   2.00    0.0    0.0    0.0
+     0x3e0      3.9    2.6    56.2  0011   38.1   2.05    0.0    0.0    0.0
+     0x140      2.6    3.0   100.0  1100   35.7   2.07    0.0    0.0    0.0
+     0x1a0      2.6    3.0   100.0  1100   35.7   2.07    0.0    0.0    0.0
+     0x1d0      2.6    3.0   100.0  1100   35.7   2.07    0.0    0.0    0.0
+     0x200      2.6    3.0   100.0  1100   35.7   2.07    0.0    0.0    0.0
+     0x230      2.6    3.0   100.0  1100   35.7   2.07    0.0    0.0    0.0
+     0x260      2.6    3.0   100.0  1100   35.7   2.07    0.0    0.0    0.0
+     0x2c0      2.6    3.0   100.0  1000   35.7   2.07    0.0    0.0    0.0
+     0x2f0      2.6    3.0   100.0  1000   35.7   2.07    0.0    0.0    0.0
+     0x320      2.6    3.0   100.0  1000   35.7   2.07    0.0    0.0    0.0
+     0x350      2.6    3.0   100.0  1000   35.7   2.07    0.0    0.0    0.0
+     0x380      2.6    3.0   100.0  1000   35.7   2.07    0.0    0.0    0.0
+     0x3b0      2.6    3.0   100.0  1000   35.7   2.07    0.0    0.0    0.0

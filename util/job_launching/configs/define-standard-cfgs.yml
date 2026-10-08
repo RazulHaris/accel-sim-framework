@@ -99,6 +99,13 @@ NCOPYK:
 DUMP_UNCOAL:
     extra_params: "-gpgpu_dump_uncoalesced_loads 1"
 
+# One CSV record per L1D transaction of every global load: pc, coalescing
+# degree, warp id and the 4-bit sector mask.  Written to sector_masks.log in
+# the job directory (or $SECTOR_MASK_LOG); the simulator caps each log at
+# 20 GiB unless $SECTOR_MASK_LOG_MAX_BYTES says otherwise.
+DUMP_SECTOR:
+    extra_params: "-gpgpu_dump_sector_masks 1"
+
 # Oracle latency-hiding prefetcher: a global load that misses the L1D as part
 # of an uncoalesced access releases its warp at L1-hit latency, while the miss
 # itself still travels the whole memory hierarchy, so all traffic costs remain.
