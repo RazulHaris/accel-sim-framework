@@ -96,6 +96,15 @@ NCOPYK:
 1B_INSN:
     extra_params: "-gpgpu_max_insn 1000000000"
 
+DUMP_UNCOAL:
+    extra_params: "-gpgpu_dump_uncoalesced_loads 1"
+
+# Oracle latency-hiding prefetcher: a global load that misses the L1D as part
+# of an uncoalesced access releases its warp at L1-hit latency, while the miss
+# itself still travels the whole memory hierarchy, so all traffic costs remain.
+ORACLE_PREF:
+    extra_params: "-oracle_prefetcher_uncoalesced 1"
+
 
 100M_INSN:
     extra_params: "-gpgpu_max_insn 100000000"
@@ -186,3 +195,30 @@ Accelwattch_PTX_SIM:
     extra_params: "-power_simulation_enabled 1
     \n-power_simulation_mode 0
     \n-accelwattch_xml_file accelwattch_ptx_sim.xml"
+
+# L1D cache-size sweep for the oracle uncoalesced prefetcher.
+# -gpgpu_unified_l1d_size is the size (KB) of the unified L1D+shared-memory
+# block that -gpgpu_adaptive_cache_config carves per kernel. Shared memory
+# carveout selection is unaffected (it only compares the kernel's shmem demand
+# against -gpgpu_shmem_option), so the whole delta lands in the L1 data cache.
+# Must be a multiple of the dl1 base size (32KB) -- gpu-cache.h asserts this.
+L1D_128KB:
+    extra_params: "-gpgpu_unified_l1d_size 128"
+
+L1D_256KB:
+    extra_params: "-gpgpu_unified_l1d_size 256"
+
+# Coalescing-agnostic oracle: every global-load L1D miss releases its warp
+# early, not just those from uncoalesced loads.  Strict superset of ORACLE_PREF.
+ORACLE_ALL_MISS:
+    extra_params: "-oracle_prefetcher_all_miss 1"
+
+# Ideal-memory upper bound: the SM's outbound mem_fetch_interface is swapped for
+# perfect_memory_interface, so every request that would leave the core (L1D,
+# L1T, L1C, L1I misses and L1D-bypass global/local traffic) is turned around
+# into the cluster response FIFO immediately. Interconnect, L2 and DRAM are
+# removed entirely. L1 tag probes, MSHRs, the l1_latency pipeline and shared
+# memory bank conflicts are all still modelled -- this is a zero-off-SM-latency
+# bound, not a zero-cost-memory bound.
+PERFECT_MEM:
+    extra_params: "-gpgpu_perfect_mem 1"
