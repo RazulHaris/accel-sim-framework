@@ -1,0 +1,59 @@
+# Stats for the Snake prefetcher experiments (docs/snake/SNAKE_PLAN.md section 10).
+# Same as example_stats.yml plus L1D read breakdown and the snake_* counters.
+collect_aggregate:
+    - 'gpu_tot_sim_insn\s*=\s*(.*)'
+    - 'gpgpu_simulation_time\s*=.*\(([0-9]+) sec\).*'
+    - 'gpu_tot_sim_cycle\s*=\s*(.*)'
+    - '\s+L2_cache_stats_breakdown\[GLOBAL_ACC_R\]\[HIT\]\s*=\s*(.*)'
+    - '\s+L2_cache_stats_breakdown\[GLOBAL_ACC_R\]\[TOTAL_ACCESS\]\s*=\s*(.*)'
+    - '\s+L2_cache_stats_breakdown\[GLOBAL_ACC_W\]\[HIT\]\s*=\s*(.*)'
+    - '\s+L2_cache_stats_breakdown\[GLOBAL_ACC_W\]\[TOTAL_ACCESS\]\s*=\s*(.*)'
+    - '\s+Total_core_cache_stats_breakdown\[GLOBAL_ACC_R\]\[TOTAL_ACCESS\]\s*=\s*(.*)'
+    - '\s+Total_core_cache_stats_breakdown\[GLOBAL_ACC_R\]\[HIT\]\s*=\s*(.*)'
+    - '\s+Total_core_cache_stats_breakdown\[GLOBAL_ACC_W\]\[HIT\]\s*=\s*(.*)'
+    - '\s+Total_core_cache_stats_breakdown\[GLOBAL_ACC_W\]\[TOTAL_ACCESS\]\s*=\s*(.*)'
+    - '\s+Total_core_cache_stats_breakdown\[GLOBAL_ACC_R\]\[MSHR_HIT\]\s*=\s*(.*)'
+    - 'gpgpu_n_tot_w_icount\s*=\s*(.*)'
+    - 'total dram reads\s*=\s*(.*)'
+    - 'total dram writes\s*=\s*(.*)'
+    - 'kernel_launch_uid\s*=\s*(.*)'
+    - 'gpgpu_n_shmem_bkconflict\s*=\s*(.*)'
+    - 'gpgpu_n_l1cache_bkconflict\s*=\s*(.*)'
+
+
+# These stats are reset each kernel and should not be diff'd
+# They cannot be used is only collecting the final_kernel stats
+    - '\s+Total_core_cache_stats_breakdown\[GLOBAL_ACC_R\]\[MISS\]\s*=\s*(.*)'
+    - '\s+Total_core_cache_stats_breakdown\[GLOBAL_ACC_R\]\[HIT_RESERVED\]\s*=\s*(.*)'
+    - '\s+Total_core_cache_stats_breakdown\[GLOBAL_ACC_R\]\[SECTOR_MISS\]\s*=\s*(.*)'
+    - '\s+Total_core_cache_stats_breakdown\[GLOBAL_ACC_R\]\[RESERVATION_FAIL\]\s*=\s*(.*)'
+    # Snake prefetcher (docs/snake/SNAKE_PLAN.md section 7); present only when
+    # -snake_enable 1.  Cumulative over the run, like gpu_tot_sim_cycle.
+    - 'snake_gpgpu_n_mem_l1_prefetch\s*=\s*(.*)'
+    - 'snake_pf_generated\s*=\s*(.*)'
+    - 'snake_pf_issued\s*=\s*(.*)'
+    - 'snake_pf_dup_queue\s*=\s*(.*)'
+    - 'snake_pf_dup_l1\s*=\s*(.*)'
+    - 'snake_pf_dup_mshr\s*=\s*(.*)'
+    - 'snake_pf_drop_queue_full\s*=\s*(.*)'
+    - 'snake_pf_drop_resource\s*=\s*(.*)'
+    - 'snake_pf_drop_throttled\s*=\s*(.*)'
+    - 'snake_pf_filled\s*=\s*(.*)'
+    - 'snake_pf_useful_timely\s*=\s*(.*)'
+    - 'snake_pf_late\s*=\s*(.*)'
+    - 'snake_pf_evicted_unused\s*=\s*(.*)'
+    - 'snake_pf_unused_at_end\s*=\s*(.*)'
+    - 'snake_demand_sector_accesses\s*=\s*(.*)'
+
+collect_abs:
+    - 'gpu_ipc\s*=\s*(.*)'
+    - 'gpu_occupancy\s*=\s*(.*)%'
+    - 'L2_BW\s*=\s*(.*)\s*GB\/Sec'
+
+# These stats are rates that aggregate - but cannot be diff'd
+# Only valid as a snapshot and most useful for the final kernel launch
+collect_rates:
+    - 'gpgpu_simulation_rate\s+=\s+(.*)\s+\(inst\/sec\)'
+    - 'gpgpu_simulation_rate\s+=\s+(.*)\s+\(cycle\/sec\)'
+    - 'gpgpu_silicon_slowdown\s*=\s*(.*)x'
+    - 'gpu_tot_ipc\s*=\s*(.*)'

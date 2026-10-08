@@ -186,3 +186,42 @@ Accelwattch_PTX_SIM:
     extra_params: "-power_simulation_enabled 1
     \n-power_simulation_mode 0
     \n-accelwattch_xml_file accelwattch_ptx_sim.xml"
+
+# ---- Snake prefetcher (Mostofi et al., MICRO 2023) -------------------------
+# See docs/snake/SNAKE_PLAN.md (sections 6 and 10).  Baseline and Snake runs
+# use the same base config; only the SNAKE* token differs.
+
+# Paper GPU setup (Tab. 1): GTO scheduler and a 1530 MHz clock on QV100.  The
+# interconnect and L2 clocks follow the core clock, as in the stock QV100.
+PAPER_V100:
+    extra_params: "-gpgpu_scheduler gto
+    \n-gpgpu_clock_domains 1530.0:1530.0:1530.0:850.0"
+
+# Clock-sensitivity variant (OQ-23): GTO at QV100's calibrated 1132 MHz.
+PAPER_V100_1132:
+    extra_params: "-gpgpu_scheduler gto"
+
+SNAKE:
+    extra_params: "-snake_enable 1"
+
+# Snake-DT: no decoupling, no throttling (paper section 4)
+SNAKE_DT:
+    extra_params: "-snake_enable 1
+    \n-snake_decouple_mode 0
+    \n-snake_throttle_enable 0"
+
+# Snake-T: decoupling without throttling (paper section 4)
+SNAKE_T:
+    extra_params: "-snake_enable 1
+    \n-snake_throttle_enable 0"
+
+# s-Snake: inter-thread chains only (paper section 4)
+S_SNAKE:
+    extra_params: "-snake_enable 1
+    \n-snake_enable_inter_warp 0
+    \n-snake_enable_intra_warp 0"
+
+# Isolated-Snake: prefetches in a separate buffer (paper section 5.7)
+SNAKE_ISO:
+    extra_params: "-snake_enable 1
+    \n-snake_decouple_mode 2"

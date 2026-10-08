@@ -19,14 +19,23 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
 
 | Stage | Status | accel-sim | gpgpu-sim | Test result |
 |---|---|---|---|---|
-| S0 analysis docs (this file and its companions) | done | `snake: S0 analysis docs` (hash recorded with S1) | `6c3cf4ff` (base) | — |
-| S1 infrastructure | pending | | | |
+| S0 analysis docs (this file and its companions) | done | `84251a0` | `6c3cf4ff` (base) | — |
+| S1 infrastructure | done | `snake: S1 infrastructure` (hash recorded with S2) | `e0d23397` | off-regression result recorded with S2 (see S1 notes) |
 | S2 training only | pending | | | |
 | S3a/S3b issue (intra + inter-thread, then inter-warp) | pending | | | |
 | S4 throttling + decoupling | pending | | | |
 | S5 sweeps + cleanup | pending | | | |
 
 **Reference build for the off-regression (§9.1):** `/home/razul/snake/bin_ref/` holds `accel-sim.out` plus `lib/libcudart.so`, which contains the gpgpu-sim model. It was built 2026-10-08 from the clean bases (`accelsim-commit-3016c65_modified_0.0`, `gpgpu-sim_git-commit-6c3cf4ff_modified_0.0`); checksums are in `BUILD_INFO.txt`.
+
+**Rule:** a stage's own commit cannot contain its hash or the result of a gate run on it. Both are recorded in the next stage's commit.
+
+**S1 notes (clarifications of the plan, no change of design):**
+- **Injection API deferred.** `l1_cache::snake_prefetch()` (§2) and the `shader_core_ctx` getters `get_warp_cta_slot` / `warp_active` arrive in S3, where they are first used. They are calls *from* Snake, not hooks; every hook in §2/§4 is wired in S1.
+- **One hook in place of two.** `on_kernel_switch` is detected inside `on_warp_init` (kernel uid change, OQ-19), so `init_warps` has one hook.
+- **App selection.** No new app suite is needed. `run_simulations.py -B` accepts `suite:exe[:argindex]` selectors (`util/job_launching/common.py:110-131`), e.g. `rodinia-3.1:backprop-rodinia-3.1:0`.
+- **What "byte-identical" excludes.** gpgpu-sim prints every registered option at start-up (`OptionParser::Print`, `src/option_parser.cc:422`), so the new `-snake_*` options add lines to that dump. The off-regression therefore removes exactly those lines, and the volatile lines (dates, wall-clock, simulation rate, build strings, binary paths), and then requires the rest to be byte-identical.
+- **Pin the model library.** In trace mode `run_simulations.py` copies only `accel-sim.out` into `gpgpu-sim-builds/` (`run_simulations.py:450-480`). The timing model lives in `libcudart.so`, which jobs load through `LD_LIBRARY_PATH` at run time, so a rebuild can change the model under running or queued jobs. Every Snake run uses a frozen `accel-sim.out` + `libcudart.so` pair and sets `LD_LIBRARY_PATH` explicitly.
 
 ## 1. Design summary
 - **One object per SM.** Each `ldst_unit` owns a `snake_prefetcher`. The object is only constructed when `-snake_enable 1`; with Snake off, every hook is a null-pointer check.
@@ -257,6 +266,7 @@ grep -rhoE '(gpgpu-sim_git-commit|accelsim-commit)-[0-9a-f]+_modified_[0-9.]+' s
 
 - **1132 MHz sensitivity run (OQ-23):** the same loop with `CFG=QV100-SASS-PAPER_V100_1132-1B_INSN` (GTO, stock 1132 MHz clock) into `sim_run_baseline_1132` and `sim_run_snake_1132`.
 - Each job's output also records the build strings, so the clean-tree proof is kept with the results.
+- Each run directory also gets a frozen copy of the build's `libcudart.so`, and jobs are launched with `LD_LIBRARY_PATH` pointing to it (S1 notes).
 - `-B` is narrowed to the paper apps through the snake-paper suite entry (exact mechanism verified in S1).
 
 ## 11. Risks
