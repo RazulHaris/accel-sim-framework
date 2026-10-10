@@ -20,7 +20,7 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
 | Stage | Status | accel-sim | gpgpu-sim | Test result |
 |---|---|---|---|---|
 | S0 analysis docs (this file and its companions) | done | `84251a0` | `6c3cf4ff` (base) | — |
-| S1 infrastructure | done | `snake: S1 infrastructure` (hash recorded with S2) | `e0d23397` | off-regression result recorded with S2 (see S1 notes) |
+| S1 infrastructure | done | `d49e1f3` | `e0d23397` | off-regression PASS on 5 workloads (backprop, hotspot ×2, nw, histo): ref == off, off == on, raw cycles/insn/L1/DRAM equal (`sim_run_snake_regress/S1`, 2026-10-08) |
 | S2 training only | pending | | | |
 | S3a/S3b issue (intra + inter-thread, then inter-warp) | pending | | | |
 | S4 throttling + decoupling | pending | | | |
@@ -33,7 +33,8 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
 **S1 notes (clarifications of the plan, no change of design):**
 - **Injection API deferred.** `l1_cache::snake_prefetch()` (§2) and the `shader_core_ctx` getters `get_warp_cta_slot` / `warp_active` arrive in S3, where they are first used. They are calls *from* Snake, not hooks; every hook in §2/§4 is wired in S1.
 - **One hook in place of two.** `on_kernel_switch` is detected inside `on_warp_init` (kernel uid change, OQ-19), so `init_warps` has one hook.
-- **App selection.** No new app suite is needed. `run_simulations.py -B` accepts `suite:exe[:argindex]` selectors (`util/job_launching/common.py:110-131`), e.g. `rodinia-3.1:backprop-rodinia-3.1:0`.
+- **App selection.** No new app suite is needed. `run_simulations.py -B` accepts `suite` and `suite:exe` selectors (`util/job_launching/common.py:110-131`), e.g. `rodinia-3.1:backprop-rodinia-3.1`; `suite:exe` runs every input listed for that app (hotspot and lud have two).
+  **Correction (S1 docs commit):** `suite:exe:N` is registered by `common.py:113-121` but crashes `run_simulations.py:108` (`TypeError: 'int' object is not subscriptable`), because that entry stores its argument list as a bare string. Do not use it.
 - **What "byte-identical" excludes.** gpgpu-sim prints every registered option at start-up (`OptionParser::Print`, `src/option_parser.cc:422`), so the new `-snake_*` options add lines to that dump. The off-regression therefore removes exactly those lines, and the volatile lines (dates, wall-clock, simulation rate, build strings, binary paths), and then requires the rest to be byte-identical.
 - **Pin the model library.** In trace mode `run_simulations.py` copies only `accel-sim.out` into `gpgpu-sim-builds/` (`run_simulations.py:450-480`). The timing model lives in `libcudart.so`, which jobs load through `LD_LIBRARY_PATH` at run time, so a rebuild can change the model under running or queued jobs. Every Snake run uses a frozen `accel-sim.out` + `libcudart.so` pair and sets `LD_LIBRARY_PATH` explicitly.
 
@@ -217,6 +218,7 @@ The ablations come from these flags:
 ## 8. Staged implementation (each stage = one commit per changed repo, `snake: S<n> <desc>`)
 - **S1 Infrastructure.** Options, empty `snake_prefetcher` wired to all hooks, `L1_PREFETCH_R` type, print guard, stats skeleton, configs/yml in accel-sim.
   - *Done when:* it builds and the **off-regression** (§9.1) is byte-identical on 4 workloads; with Snake on (no-op) it is also identical apart from the `snake_*` block.
+  - **Done 2026-10-08:** gpgpu-sim `e0d23397`, accel-sim `d49e1f3`. Off-regression PASS on 5 workloads (hotspot has two inputs).
 - **S2 Training only.** Head/Tail/T1/T2/inter-warp, lane-stride check, demotion, kernel/warp resets, eviction policy, `snake_debug_trace`.
   - *Done when:* synthetic traces (§9.2) give the expected strides and promotions (unit-style assertions on the debug log), and on rodinia hotspot, srad_v1 and backprop `tail_hits/lookups`, promotions and the chain-depth histogram are plausible. Timing is still identical to baseline, since there is no issue.
 - **S3a Intra-warp + inter-thread issue, no throttling or decoupling.** Then **S3b** adds inter-warp.
@@ -229,8 +231,8 @@ The ablations come from these flags:
 ## 9. Verification
 1. **Off-regression.**
    - Reference: `/home/razul/snake/bin_ref/` (`accel-sim.out` + `lib/libcudart.so`, built from the clean bases; outside the repo). Run it with `LD_LIBRARY_PATH=/home/razul/snake/bin_ref/lib`.
-   - Run the ref and the new binary with `-snake_enable 0` on rodinia-3.1 backprop, hotspot and nw plus parboil histo, with `-gpgpu_max_insn 100000000`.
-   - Compare with `diff` after stripping wall-clock, simulation-rate and build-string lines. **Must be empty.** Repeat at every stage.
+   - Runner: `util/snake/off_regression.sh <stage>` (from S1 docs commit on). It refuses a dirty tree or a branch other than `Snake`, freezes the build into `sim_run_snake_regress/<stage>/bin_new`, and runs ref / off / on on rodinia-3.1 backprop, hotspot (2 inputs), nw, srad_v1 (added in S2) and parboil histo, `QV100-SASS-PAPER_V100-100M_INSN`.
+   - Compare after `util/snake/regress_norm.py`, which removes only volatile lines (wall-clock, simulation rate, build strings, binary paths) and the added `-snake_*` option-dump lines, and makes two heap-address-dependent debug dumps comparable (pending-request list sorted, MSHR pointers masked). **Must be identical.** The final cycles, instructions, L1D read hits/misses and DRAM reads are also compared raw. Repeat at every stage.
 2. **Microbenchmarks.** `gen_synthetic_traces.py` writes accel-sim text traces (no GPU needed):
    - (a) a strided loop (fixed inter-thread chain + intra stride) → coverage ≥90%
    - (b) random gather → throttled, little issue
@@ -266,8 +268,9 @@ grep -rhoE '(gpgpu-sim_git-commit|accelsim-commit)-[0-9a-f]+_modified_[0-9.]+' s
 
 - **1132 MHz sensitivity run (OQ-23):** the same loop with `CFG=QV100-SASS-PAPER_V100_1132-1B_INSN` (GTO, stock 1132 MHz clock) into `sim_run_baseline_1132` and `sim_run_snake_1132`.
 - Each job's output also records the build strings, so the clean-tree proof is kept with the results.
-- Each run directory also gets a frozen copy of the build's `libcudart.so`, and jobs are launched with `LD_LIBRARY_PATH` pointing to it (S1 notes).
-- `-B` is narrowed to the paper apps through the snake-paper suite entry (exact mechanism verified in S1).
+- **Rule: every run snapshots `libcudart.so` alongside `accel-sim.out`.** The run directory gets a frozen copy of both (e.g. `<run_dir>/bin/accel-sim.out` and `<run_dir>/bin/lib/libcudart.so`), and every job is launched with `LD_LIBRARY_PATH` pointing to that copy. `run_simulations.py` copies only `accel-sim.out` (`run_simulations.py:450-480`), and its `justrun.sh` takes `libcudart.so`, which holds the timing model, from the environment at launch.
+- **Rule: no rebuilds while jobs are queued or running.** Before `make`, check that no `accel-sim.out` process is running and no launcher still has jobs queued (`ps`, `screen -ls`, `job_status.py`). Even with snapshots, a queued `justrun.sh` launched outside the snapshot launcher would pick up the new library.
+- `-B` is narrowed to the paper apps with `suite:exe` selectors (S1 notes): `rodinia-3.1:backprop-rodinia-3.1,rodinia-3.1:hotspot-rodinia-3.1,rodinia-3.1:srad_v1-rodinia-3.1,rodinia-3.1:lud-rodinia-3.1,rodinia-3.1:nw-rodinia-3.1` and `parboil:parboil-histo,parboil:parboil-mri-q`.
 
 ## 11. Risks
 - **Deadlock / livelock:**
