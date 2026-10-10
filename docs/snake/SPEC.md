@@ -155,7 +155,8 @@ Format: interpretation (confidence).
 - **OQ-4 Prefetch queue.**
   - 32 entries, FIFO; drop the newest when full.
   - Issue ≤1 prefetch/cycle, only in cycles where the L1D port was not used by a demand access. (low)
-- **OQ-5 T1/T2 encoding.** 00 = untrained → 01 = observed (≥1 warp) → 10 = promoted (≥3 warps, prefetch for others) → 11 = trained (repetition confirmed; also allows chaining). Fig. 15 matches this. Text and figure partly conflict. (low)
+- **OQ-5 T1/T2 encoding.** 00 = untrained → 01 = observed (≥1 warp) → 10 = promoted (≥3 warps, prefetch for others) → 11 = trained (repetition confirmed; also allows chaining). Text and figure partly conflict. (low)
+  - **Correction (S2):** Fig. 15 does not use these codes. It prints the promoted entry of phase (b) as '01', the trained one of (c) as '11', and a one-warp entry and a new intra stride as '00'. The *states* match the order above; only the printed codes differ, so the codes are treated as internal labels (SNAKE_PLAN S2 notes).
 - **OQ-6 Inter-warp stride.** Normalised per warp-ID distance: (a_j − a_i)/(w_j − w_i), equal across ≥3 warps, as in Fig. 15a. (medium)
 - **OQ-7 Chain depth.** Config `snake_max_chain_depth`, default 3. Paper gives no number; Fig. 13 shows depth 2. Throttling can reduce it to 0. (low)
 - **OQ-8 Inter-warp targets.** Prefetch for the next `snake_interwarp_degree` (default 4) warp IDs above w that are resident on the SM and in the same CTA. "All future warps" is unbounded. (low)

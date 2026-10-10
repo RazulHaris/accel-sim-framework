@@ -225,3 +225,15 @@ S_SNAKE:
 SNAKE_ISO:
     extra_params: "-snake_enable 1
     \n-snake_decouple_mode 2"
+
+# Snake test configs (docs/snake/SNAKE_PLAN.md section 9.2).
+# Per-event Snake log on stdout ("SNAKE_DBG ..."); for synthetic traces only.
+SNAKE_DBG:
+    extra_params: "-snake_debug_trace 1"
+
+# One LRR scheduler per SM without the sub-core model, so the warps of a CTA
+# issue strictly round robin, as in the paper's Fig. 15 example.
+SYNTH_LRR1:
+    extra_params: "-gpgpu_scheduler lrr
+    \n-gpgpu_num_sched_per_core 1
+    \n-gpgpu_sub_core_model 0"

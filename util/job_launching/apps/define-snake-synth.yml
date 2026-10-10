@@ -1,0 +1,18 @@
+# Synthetic trace workloads for the Snake prefetcher tests
+# (docs/snake/SNAKE_PLAN.md section 9.2).  There is no executable: the traces
+# are written by util/snake/gen_synthetic_traces.py and run with
+#   run_simulations.py -B snake-synth -T <trace root> ...
+# Each app's traces live in <trace root>/<app>/NO_ARGS/traces.
+snake-synth:
+    exec_dir: "$ACCELSIM_ROOT/../util/snake"
+    data_dirs: "$ACCELSIM_ROOT/../util/snake/no_data"
+    execs:
+        - snake-synth-strided:
+            - args: ""
+              accel-sim-mem: 1G
+        - snake-synth-random:
+            - args: ""
+              accel-sim-mem: 1G
+        - snake-synth-fig15:
+            - args: ""
+              accel-sim-mem: 1G

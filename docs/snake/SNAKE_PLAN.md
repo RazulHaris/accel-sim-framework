@@ -21,7 +21,8 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
 |---|---|---|---|---|
 | S0 analysis docs (this file and its companions) | done | `84251a0` | `6c3cf4ff` (base) | — |
 | S1 infrastructure | done | `d49e1f3` | `e0d23397` | off-regression PASS on 5 workloads (backprop, hotspot ×2, nw, histo): ref == off, off == on, raw cycles/insn/L1/DRAM equal (`sim_run_snake_regress/S1`, 2026-10-08) |
-| S2 training only | pending | | | |
+| S2 training only | done | `snake: S2 training` (hash recorded with S3) | `ace5cc70` | gate result recorded with S3 |
+| S1 docs + regression tooling | done | `b930d75` | — | — |
 | S3a/S3b issue (intra + inter-thread, then inter-warp) | pending | | | |
 | S4 throttling + decoupling | pending | | | |
 | S5 sweeps + cleanup | pending | | | |
@@ -29,6 +30,18 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
 **Reference build for the off-regression (§9.1):** `/home/razul/snake/bin_ref/` holds `accel-sim.out` plus `lib/libcudart.so`, which contains the gpgpu-sim model. It was built 2026-10-08 from the clean bases (`accelsim-commit-3016c65_modified_0.0`, `gpgpu-sim_git-commit-6c3cf4ff_modified_0.0`); checksums are in `BUILD_INFO.txt`.
 
 **Rule:** a stage's own commit cannot contain its hash or the result of a gate run on it. Both are recorded in the next stage's commit.
+
+**S2 notes (interpretations made while implementing training; each is marked in the code with its OQ number):**
+- **T1/T2 codes (OQ-5).** The states are untrained → observed (fewer than `promote_warps` warps) → promoted → trained. Fig. 15 prints them with different codes (see SPEC OQ-5 correction), so the codes are labels only.
+- **T1 trained (OQ-5).** A promoted entry becomes trained on repetition, which is either a warp already in the vector matching the same (PC1, PC2, stride) again, or a warp returning to PC1 through the entry while its intra-warp stride is computed (Fig. 15c).
+- **Promotion-time predictions (§3.2 ¶4, OQ-27).** When an entry is promoted, every other warp whose Head register is at PC1 and whose bit is not set gets a prediction for PC2 (Fig. 15b, 1800).
+- **Demotion (§3.2, OQ-28).** It applies to promoted or trained entries; when more than `demote_removed` warps have been removed, T1 drops to untrained and the warpID vector is cleared.
+- **Lane-stride exclusion (OQ-17).** An excluded load also invalidates its warp's Head register, so no stride is computed across it.
+- **Inter-warp stride (OQ-6).** It is stored in every Tail entry with that PC1, or in a new PC1-only entry (Fig. 15a), and the latest consistent stride replaces an older one. `snake_interwarp_min_warps` is limited to 2 or 3, because the Head keeps two warps per PC. With `-snake_head_two_warps 0`, the candidates are the per-warp registers whose last load was this PC, nearest warp ID first.
+- **Intra-warp stride (OQ-26).** It is stored in every Tail entry with that PC1. The chain walk follows the most recently used qualifying entry at each step.
+- **Inter-warp prediction targets (OQ-8).** These are the next `interwarp_degree` warps above the current one that were initialised in the same CTA slot. Warp liveness is not tracked in S2.
+- **Fig. 15 test layout.** With a single LRR scheduler, warp 0 issues last in each round, so the test CTA has 5 warps: warp 0 only exits, and W1..W4 are warps 1..4. That keeps warp IDs, warpID bits and the per-warp-ID inter-warp stride identical to the figure.
+- **Clean builds.** An incremental build of S2 crashed at start-up (null `m_cluster` in `gpgpu_sim::init`), and a clean build of the same sources ran correctly. Every binary that is tested or used for results is therefore built with `make clean` first.
 
 **S1 notes (clarifications of the plan, no change of design):**
 - **Injection API deferred.** `l1_cache::snake_prefetch()` (§2) and the `shader_core_ctx` getters `get_warp_cta_slot` / `warp_active` arrive in S3, where they are first used. They are calls *from* Snake, not hooks; every hook in §2/§4 is wired in S1.
@@ -234,9 +247,10 @@ The ablations come from these flags:
    - Runner: `util/snake/off_regression.sh <stage>` (from S1 docs commit on). It refuses a dirty tree or a branch other than `Snake`, freezes the build into `sim_run_snake_regress/<stage>/bin_new`, and runs ref / off / on on rodinia-3.1 backprop, hotspot (2 inputs), nw, srad_v1 (added in S2) and parboil histo, `QV100-SASS-PAPER_V100-100M_INSN`.
    - Compare after `util/snake/regress_norm.py`, which removes only volatile lines (wall-clock, simulation rate, build strings, binary paths) and the added `-snake_*` option-dump lines, and makes two heap-address-dependent debug dumps comparable (pending-request list sorted, MSHR pointers masked). **Must be identical.** The final cycles, instructions, L1D read hits/misses and DRAM reads are also compared raw. Repeat at every stage.
 2. **Microbenchmarks.** `gen_synthetic_traces.py` writes accel-sim text traces (no GPU needed):
-   - (a) a strided loop (fixed inter-thread chain + intra stride) → coverage ≥90%
-   - (b) random gather → throttled, little issue
-   - (c) the Fig. 15 example (4 warps, PCs 520/540) → exact Tail state and prefetch queue 2600/2700/2800/3000. This is a direct check of the SPEC.
+   - (a) a strided loop (fixed inter-thread chain + intra stride) → S2: the chain, inter-warp and intra-warp strides are trained; S3: coverage ≥90%
+   - (b) random gather → S2: nothing is promoted; S4: throttled, little issue
+   - (c) the Fig. 15 example (PCs 0x520/0x540, W1..W4 = warps 1..4 of a 5-warp CTA whose warp 0 only exits, one LRR scheduler) → exact Head/Tail state after each phase and predictions 1300 / 1800 / {2600, 2700, 2800, 3000}. This is a direct check of the SPEC.
+   - Runner: `util/snake/run_synthetic.sh <stage>` (traces from `gen_synthetic_traces.py`, app suite `snake-synth`, config `QV100-SASS-SYNTH_LRR1-SNAKE-SNAKE_DBG`, checks in `check_synthetic.py`). Training statistics of real runs: `util/snake/training_report.py <sim.out>...`.
    - Fallback: NVBit-trace small CUDA kernels on the local RTX 2080 Ti.
 3. **Paper comparison.**
    - Run the suite on `QV100 + PAPER_V100 + 1B_INSN`, baseline vs. SNAKE (and the DT/T/s-Snake ablations).
@@ -298,3 +312,6 @@ All of OQ-1…OQ-18 from SPEC §7 carry over, plus:
 - **OQ-23 Clock.** Use the paper's 1530 MHz, or the base's 1132 MHz QV100 calibration? **Decided:** 1530 for the main comparison, plus one 1132 sensitivity run.
 - **OQ-24 Rodinia version.** 3.1 (srad_v1) vs. 2.0-ft (srad_v2). **Decided:** 3.1.
 - **OQ-25 Competitor prefetchers** (INTRA, INTER, MTA, CTA-Aware, Tree). **Decided:** none for now; Snake ablations only.
+- **OQ-26 Intra-warp stride storage (S2).** The stride belongs to the load PC and is kept in every Tail entry with that PC1. The non-consecutive case walks this warp's chain through the most recently used qualifying entry at each step. (medium)
+- **OQ-27 Promotion-time targets (S2).** "Issues prefetching requests for all future warps as soon as … promoted" (§3.2) is read as: every other warp whose Head register is at PC1 and whose warpID bit is not yet set. (medium)
+- **OQ-28 Demotion (S2).** A demoted entry (more than `demote_removed` warps removed, §3.2) also clears its warpID vector, so it is re-trained from scratch instead of being re-promoted by the remaining bits. (low)
