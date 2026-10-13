@@ -30,14 +30,15 @@ Updated with every stage. A stage's gate results and its own commit hashes go in
 | Reference `bin_ref_v2` + legacy-trace tooling | `bed3a2b` | — | synthetic PASS; off-regression vs `bin_ref_v2` PASS |
 | Docs for the parser fix, upstream issue draft | `61c0dc1` | — | — |
 | S2c stateless lane-run filter (OQ-17), `snake_footprint` setting (OQ-9), `interwarp_trained_pcs` | `293aaaa` | `bc22d0dd` | synthetic PASS (both modes); off-regression vs `bin_ref_v2` PASS (6 workloads); hotspot and backprop excluded 0% (all L = 16); hotspot 80/88 promotions; backprop 0 promotions by design (SPEC §8), 2 inter-warp PCs; srad_v1 2,337 promotions, 16 inter-warp PCs |
+| S3a prefetch issue (inter-thread chain/promotion + intra-warp; Snake-DT) | `1221702`, `9dc2631`, `d836622` | `028012de`, `5c6f2267`, `2d50a9aa` | synthetic PASS (trace (d) coverage_paper 93.0%); 7 apps × 2 footprints finish, no warp woken, invariant OK; off-regression PASS; `snake_missq_reserve` 8 from the lud sweep. Tables: `results/S3a_gate.md` |
 
-**In progress — S3a prefetch issue (2026-10-13):** implemented in `snake: S3a prefetch issue` in both repos. Hashes and gate results follow in `snake: S3a gate results`.
-- Inter-thread (chain depth ≤ 3, promotion) and intra-warp predictions are issued as `L1_PREFETCH_R` sector reads (`l1_cache::snake_prefetch`). Inter-warp predictions are only counted until S3b.
-- Decoupling and throttling are forced off (Snake-DT).
-- The prefetch queue holds one entry per 128 B line (OQ-4). A line gets no more L1D or miss-queue bandwidth per cycle than a demand access to it, and demand goes first.
-- Both footprints work (line, exact).
-- Outcome counters and the invariant are in place; `pf_woken_warps` must be 0. coverage_pred (OQ-14) and `tail_evict_interwarp_trained` are new.
-- New synthetic trace (d) `strided-dep` carries the coverage gate; trace (a) is now a saturation test.
+**S3a findings, carried to S3b (SPEC §8):**
+- Coverage is mostly late, since there is no inter-warp lookahead yet, so IPC within ±0.4% is expected.
+- coverage_pred is far below the paper (hotspot 35%, srad_v1 14%); re-check after S3b.
+- Inter-warp Tail entries are evicted with ~0.9 warp bits (backprop); fix in S3b.
+- The non-lud apps were not re-run with miss-queue reserve 8, because they dropped < 10% of their prefetches for miss-queue slots.
+
+**In progress:** nothing.
 
 **Reference builds:** both are in `/home/razul/snake/`, with checksums in their `BUILD_INFO.txt`.
 - `bin_ref_v2` is the regression reference from 2026-10-13: the clean base plus the parser fix.

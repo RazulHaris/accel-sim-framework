@@ -28,7 +28,7 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
 | Docs: trace-parser fix, upstream issue draft | done | `61c0dc1` | — | — |
 | S2c stateless lane-run filter + footprint setting | done | `293aaaa` (gate results: `snake: S2c gate results`) | `bc22d0dd` | synthetic PASS in lane modes 1 and 0 (Fig. 15 exact; random: all 512 scattered loads excluded; `sim_run_snake_synth/S2c2`). Off-regression vs `bin_ref_v2` PASS on 6 workloads, ref outputs reused from S2c (`sim_run_snake_regress/S2c2`). Plausibility (mode 1, the off-regression `on` runs): hotspot 512/1024 excluded 0%, all L=16, Tail hits 99.3%, promotions 80/88, 2 inter-warp PCs, chain depth 1 for 35%/37%; backprop excluded 0%, all L=16, 0 promotions (SPEC §8), interwarp_trained 32,624 on 2 PCs; srad_v1 excluded 2.5%, Tail hits 74.2%, 2,337 promotions, 16 inter-warp (kernel, PC) pairs, chain depth 0/1/2/3: 89.8/9.9/0.3/0.1% |
 | S1 docs + regression tooling | done | `b930d75` | — | — |
-| S3a issue: inter-thread (chain, promotion) + intra-warp, Snake-DT | implemented; gates pending | `snake: S3a prefetch issue` | same title | recorded in the follow-up commit `snake: S3a gate results` |
+| S3a issue: inter-thread (chain, promotion) + intra-warp, Snake-DT | done | `1221702`, `9dc2631`, `d836622` (gate results: `snake: S3a gate results`) | `028012de`, `5c6f2267`, `2d50a9aa` | synthetic PASS (trace (d) coverage_paper 93.0% exact and line; (b) 0 issued; (a) saturates without deadlock; Fig. 15 PASS); 7 apps × 2 footprints: all finish, `pf_woken_warps` 0, invariant OK; off-regression vs `bin_ref_v2` PASS (`sim_run_snake_regress/S3a`, `S3a2`); miss-queue reserve 8 from the lud sweep. Tables: `docs/snake/results/S3a_gate.md` |
 | S3b inter-warp issue | pending | | | |
 | S4 throttling + decoupling | pending | | | |
 | S5 sweeps + cleanup | pending | | | |
@@ -210,6 +210,7 @@ Budget with Snake on: **≤15% slower** simulation. With Snake off: **within run
 | `snake_issue_width` | uint | 1 | OQ-4: lines per cycle (S3a) |
 | `snake_pred_window` | uint | 5000 | cycles a prediction counts for coverage_pred (OQ-14) |
 | `snake_mshr_reserve` | uint | 8 | OQ-11 |
+| `snake_missq_reserve` | uint | 8 | OQ-11: miss-queue slots left free for demand (S3a, from the lud sweep) |
 | `snake_l1_filter` | bool | 1 | "not in L1" (§3.2) |
 | `snake_throttle_enable` | bool | 1 | Snake-T = 0 (§4) |
 | `snake_throttle_space_cycles` | uint | 50 | §3.3, Fig. 23 |
@@ -270,8 +271,25 @@ The ablations come from these flags:
   - coverage_pred was added (OQ-14).
   - Decoupling and throttling are forced off (`snake_config::init`; gate configs use `SNAKE_DT`).
   - Inter-warp predictions are only counted, not issued (S3b).
-  - Hashes, gate results and deviations: §0 and `snake: S3a gate results`.
-- **S5 Sweep hooks + cleanup.** Sweep configs for Tail {10, 20, 40, ∞}, eviction policy, throttle {25…300} (Figs. 20, 22, 23), and the prefetch queue size and issue width (OQ-4, added in S3a; defaults 32 lines and 1 line per cycle stay until then); `compare_paper.py`; docs updated.
+  - **Done 2026-10-13.** gpgpu-sim `028012de` (issue path), `5c6f2267` (`-snake_missq_reserve`), `2d50a9aa` (its default 8); accel-sim `1221702` (docs, tooling), `9dc2631` (configs), `d836622` (`run_apps.sh` fix).
+  - **Gates:**
+    - Synthetic (`sim_run_snake_synth/S3a`): PASS in both footprints. Trace (d) coverage_paper is 93.0% (coverage_pred 97.6%); (b) issues 0; (a) runs without deadlock (demand MISS_QUEUE_FULL 9,024; 16,416 sectors dropped with the prefetch queue full); Fig. 15 PASS.
+    - The 7 apps (9 workloads) × line/exact (`sim_run_snake_gate/S3a`): all finish, `pf_woken_warps` 0, invariant OK.
+    - Off-regression vs `bin_ref_v2` (ref cached from S2c, `ON=0`): PASS on 6 workloads, both before (`S3a`) and after (`S3a2`) the miss-queue reserve.
+    - Baselines for lud ×2 and mri-q were run once into `sim_run_snake_refcache/bin_ref_v2`.
+  - **Miss-queue starvation stop (lud) → `-snake_missq_reserve`.** lud dropped most prefetches for miss-queue slots and doubled demand MISS_QUEUE_FULL. A sweep over N ∈ {2, 4, 8} (lud ×2, line; `S3a_mqr`) chose the default 8. lud exact was re-run with it (`S3a_mqr_fp1`): demand MISS_QUEUE_FULL 42,855 → 37,509 (512) and 38,177 → 29,387 (256); `pf_caused_resfail` 0. The other apps were not re-run with N = 8; they dropped < 10% of their prefetches for miss-queue slots.
+  - **Findings (SPEC §8):**
+    - Coverage is mostly late (no inter-warp lookahead yet), so IPC within ±0.4% is expected.
+    - coverage_pred is far below the paper (hotspot 35%, srad_v1 14%); re-check after S3b.
+    - Inter-warp Tail entries are evicted with ~0.9 warp bits (backprop) → fix in S3b.
+  - **Deviations:**
+    - Gate results are in a follow-up commit.
+    - Trace (d) replaced (a) as the coverage gate.
+    - The queue holds one entry per line.
+    - `-snake_missq_reserve` was added.
+    - The planned gate count was 16 app runs; it is 18, because lud and hotspot have two inputs.
+  - Full tables: `docs/snake/results/S3a_gate.md`.
+- **S5 Sweep hooks + cleanup.** Sweep configs for Tail {10, 20, 40, ∞}, eviction policy, throttle {25…300} (Figs. 20, 22, 23), the prefetch queue size and issue width (OQ-4, added in S3a; defaults 32 lines and 1 line per cycle stay until then) and `snake_missq_reserve` (OQ-11, default 8); `compare_paper.py`; docs updated.
   - *Done when:* the sweep run dirs generate and the plots/tables are reproducible.
 
 ## 9. Verification

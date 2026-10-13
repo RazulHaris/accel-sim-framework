@@ -185,7 +185,11 @@ Format: interpretation (confidence).
     - Already valid or reserved in L1 → `pf_dup_l1`; an MSHR entry exists → `pf_dup_mshr`.
     - No line can be reserved in the set → `pf_drop_line`.
     - Free MSHR entries ≤ `snake_mshr_reserve` (8) → `pf_drop_mshr`.
-    - Miss queue full by the demand read-miss test (`miss_queue_full(1)`) → `pf_drop_miss_queue`.
+    - Miss queue full by the demand read-miss test (`miss_queue_full(1)`), or fewer than `snake_missq_reserve` slots would stay free for demand after the prefetch → `pf_drop_miss_queue`.
+    - **`snake_missq_reserve` = 8 (decided 2026-10-13).** With the miss-queue test alone, lud (input 512, line footprint) dropped more prefetches for miss-queue slots than it issued (212,435 vs 176,706). It also more than doubled demand MISS_QUEUE_FULL (42,855 → 95,207), so demand no longer always won (SNAKE_PLAN §5).
+      - The default is the smallest N in {2, 4, 8} that keeps lud's demand MISS_QUEUE_FULL within +10% of the baseline on both inputs (line footprint).
+      - N = 2 gives +97% and N = 4 gives +50% on input 512; N = 8 gives +4.9% (512) and −9% (256), with `pf_caused_resfail` = 0.
+      - The S5 sweep varies it.
     - `pf_drop_resource` is the sum of the last three.
   - **`pf_caused_resfail`:** a demand reservation failure counts as caused by Snake when the MSHR table was full while prefetches held entries, or the miss queue was full while it held prefetches. Failures for lack of a free line in the set are not attributed.
   - Demand always wins arbitration (OQ-4). (medium)
@@ -228,6 +232,9 @@ Format: interpretation (confidence).
 OQ-19…OQ-25 (simulator-specific questions and the decisions on clock, Rodinia version and competitors) are in [SNAKE_PLAN §12](SNAKE_PLAN.md).
 
 ## 8. Design limitations observed in our traces
+- **S3a: coverage is mostly late.** Almost every covered demand sector is a demand merging into a prefetch still in flight (accuracy_paper ≤ 1% on hotspot, lud, srad_v1 and mri-q; 7% on histo). Inter-thread chains and intra-warp prefetches run ahead of their own warp by at most a few loads, and inter-warp prefetching, which runs ahead for other warps, starts in S3b. IPC within ±0.4% of the baseline is therefore expected in S3a. Re-check after S3b.
+- **S3a: coverage_pred is far below the paper's coverage** (Fig. 16): hotspot 35–38% (exact) vs ~88%, srad_v1 14–16% vs ~87%, lud 19–21% vs ~91%, histo 20–23% vs ~97%. Inter-warp predictions are not issued yet and do not count. Re-check after S3b.
+- **S3a: inter-warp Tail entries are evicted nearly empty.** backprop evicts 32,137 entries holding a trained inter-warp stride with 0.9 warp bits on average (srad_v1 ~14,000 with 1.8). Inter-warp-only entries (Fig. 15a) have no warpID bits, so the popcount eviction (OQ-3) removes them first. To be fixed in S3b.
 - **backprop (S2, after the trace-parser fix).** In `bpnn_layerforward` (kernel 1), the inter-thread stride from PC 0x90 to PC 0x180 grows by 128 B per warp. 0x90 (`input_cuda[index_in]`) advances 8 B per warp and 0x180 (`input_hidden_cuda[index]`) 136 B (`hw_run/rodinia-3.1/11.0/backprop-rodinia-3.1/65536/traces/kernel-1.traceg`).
   - No two warps share the (0x90, 0x180, stride) triple, so T1 is never promoted and no chain forms; every lookup allocates a new condition-3 entry and the 10-entry Tail thrashes.
   - This is a limitation of the design, which promotes an inter-thread stride only when ≥ 3 warps share it (§3, §3.4), not an implementation error.
