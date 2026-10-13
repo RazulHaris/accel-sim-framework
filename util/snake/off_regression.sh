@@ -23,6 +23,11 @@
 # usage: off_regression.sh <stage> [insn_cap] [parallel]
 #   e.g. off_regression.sh S1
 #   COMPARE_ONLY=1 off_regression.sh S1   re-compares an existing run
+#   REF_FROM=<earlier stage> off_regression.sh S3
+#       reuses that stage's ref outputs instead of re-running the reference;
+#       refused unless that stage's ref build is the current $REF (same build
+#       strings).  The comparison runs over that stage's ref jobs, so use it
+#       only with the same ROD_APPS/PB_APPS and instruction cap.
 # Run from a clean tree after building it; the script refuses otherwise.
 
 set -euo pipefail
@@ -64,8 +69,17 @@ cp -a "$LIBDIR/." "$OUT/bin_new/lib/"
 cat "$OUT/BUILDS.txt"
 [ "$(sed -n 4p "$OUT/BUILDS.txt" | grep -o '_modified_0\.0' | wc -l)" = 2 ] || { echo "ABORT: new build is not _modified_0.0 twice"; exit 1; }
 
+REF_FROM=${REF_FROM:-}
+if [ -n "$REF_FROM" ]; then
+  RF=$ACCELSIM/sim_run_snake_regress/$REF_FROM
+  [ "$(sed -n 5p "$RF/BUILDS.txt")" = "$(sed -n 5p "$OUT/BUILDS.txt")" ] || { echo "ABORT: $RF was run with another reference build"; exit 1; }
+  ln -s "$RF/ref" "$OUT/ref"
+  echo "ref outputs reused from $RF/ref" | tee -a "$OUT/BUILDS.txt"
+fi
+
 # Job directories (configs, trace links); -n = do not launch.
 for v in ref off on; do
+  [ $v = ref ] && [ -n "$REF_FROM" ] && continue
   c=$CFG; [ $v = on ] && c=$CFG-SNAKE
   python3 util/job_launching/run_simulations.py -B $ROD_APPS -C $c -T hw_run/rodinia-3.1/11.0 \
       -N snake_regress_${STAGE}_${v}_rod -r "$OUT/$v" -n >/dev/null
@@ -80,7 +94,7 @@ run_job() {  # <job dir> <binary dir>
 }
 export -f run_job; export OUT
 {
-  for d in $(find "$OUT/ref" -name justrun.sh -printf '%h\n'); do echo "$d $REF"; done
+  [ -n "$REF_FROM" ] || for d in $(find "$OUT/ref" -name justrun.sh -printf '%h\n'); do echo "$d $REF"; done
   for d in $(find "$OUT/off" "$OUT/on" -name justrun.sh -printf '%h\n'); do echo "$d $OUT/bin_new"; done
 } | xargs -P "$PAR" -L 1 bash -c 'run_job "$0" "$1"'
 fi

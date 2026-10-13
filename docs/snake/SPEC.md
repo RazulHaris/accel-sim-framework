@@ -62,7 +62,7 @@ On a load (w, p, a):
    - Issue only if the line is not already in L1 (§3.2 ¶1).
    - "When a PC_ld is encountered for the first time … issues prefetching requests for all future warps as soon as … promoted" (§3.2 ¶4).
 5. **Verification during prefetching.** Compare each warp's actual PC2 and stride against the Tail entry. On mismatch, clear bit w. If **more than 2 warps** are removed, T1 → '00' and the entry returns to detection (§3.2 ¶5).
-6. **Prefetch footprint.** The paper predicts only a warp base address. Expanding it to the whole warp's lines (base + lane·lane_stride) is not stated → **OQ-9** (lane mode 0). In the default lane mode 1 the target PC's stored lane pattern is replayed instead → **OQ-17**.
+6. **Prefetch footprint.** The paper predicts only a warp base address. How it becomes memory requests is not stated → **OQ-9** (`-snake_footprint`: one line per prediction by default, or an exact lane descriptor).
 7. **Latency.** 2 cycles for the detection and prefetch pipeline (§5.5 Latency). Training takes 3 cycles on average, at most 10 (§3.2 ¶7).
 
 ### 3.3 Chain length (§3.2, Fig. 13)
@@ -160,7 +160,14 @@ Format: interpretation (confidence).
 - **OQ-6 Inter-warp stride.** Normalised per warp-ID distance: (a_j − a_i)/(w_j − w_i), equal across ≥3 warps, as in Fig. 15a. (medium)
 - **OQ-7 Chain depth.** Config `snake_max_chain_depth`, default 3. Paper gives no number; Fig. 13 shows depth 2. Throttling can reduce it to 0. (low)
 - **OQ-8 Inter-warp targets.** Prefetch for the next `snake_interwarp_degree` (default 4) warp IDs above w that are resident on the SM and in the same CTA. "All future warps" is unbounded. (low)
-- **OQ-9 Prefetch footprint.** Regenerate the predicted warp's full footprint (active-lane count and lane stride of the triggering access) and coalesce it into sectors and lines exactly like a demand load. (medium)
+- **OQ-9 Prefetch footprint.** **Revised 2026-10-13 (S2c):** selected by `-snake_footprint`. In S2c the option and the storage exist; requests are issued from S3 on.
+  - **0 = line (default).** One 128 B line per predicted warp address: the line holding the address, requesting only the sectors that are missing in L1. Nothing extra is stored. Storage stays the paper's **768 B** per SM (Head 448 B + Tail 320 B, Tab. 3).
+  - **1 = exact.** Each Tail entry keeps the lane descriptor of its PC2 load, from the last warp that took the edge:
+    - run length L (2 b), first active lane (5 b), lane stride (24 b) and run stride (32 b), i.e. 63 bits ≈ **8 B per Tail entry**, **+80 B** for 10 entries (848 B per SM). The simulator keeps 64-bit fields.
+    - Inter-thread predictions target PC2, so they replay the PC2 descriptor of the entry that produced them.
+    - Inter-warp and intra-warp predictions target the triggering load's own PC, so they use that load's descriptor and need no storage.
+    - The active mask is not stored, so S3 replays all 32 lanes of the descriptor, anchored so that the predicted address is the first active lane's.
+  - (decided; replaces the earlier "triggering access's lane stride and active-lane count" expansion)
 - **OQ-10 Bandwidth throttle.**
   - Per-SM injected L1→icnt bytes per window, divided by the per-SM share of peak L1↔L2 bandwidth.
   - Window `snake_bw_window` = 100 cycles; hysteresis 70%/50%.
@@ -190,17 +197,19 @@ Format: interpretation (confidence).
 - **OQ-17 Which warps Snake uses (lane check).** **Decided 2026-10-13: a deliberate deviation from §3.4, selected by `-snake_lane_mode`.**
   - **Why.** §3.4 says the inter-lane strides of a warp are "consistently equal" and excludes warps where they are not. In the local Rodinia traces this is false for 2-D thread blocks. With 16×16 blocks each warp covers two 16-lane rows, e.g. backprop PC 0x180 has lane deltas 4 ×15, 8, 4 ×15. The paper-literal rule excluded 100% of hotspot's and 99.1% of backprop's eligible loads in the S2 gate, so neither trains, yet the paper reports ~88% and ~83% coverage for them (Fig. 16).
   - **Lane mode 0 (paper-literal, §3.4).** Lanes = active lanes only. A load is used only if every active lane is the same distance per lane index from its predecessor; a single active lane has stride 0. `-snake_require_equal_lane_stride 0` disables the check (mode 0 only). The footprint follows OQ-9.
-  - **Lane mode 1 (shape match, default).**
-    - Each load PC stores a lane-offset pattern: the active mask of the first warp that executes the PC and each active lane's address minus the first active lane's address.
-    - A later warp is used (trained on, and a trigger for predictions) only if each of its active lanes is active in the pattern and lies at the pattern's offset from the warp's first active lane. Otherwise the load is excluded and counted in `warp_excluded_shape`, and the warp's Head register is invalidated, as in mode 0.
-    - A partial or divergent warp can therefore match a full-warp pattern. Its first active lane must sit at offset 0 of the pattern, so the first active lane's address, which training uses as the warp address in both modes, is the pattern's base address.
-    - The pattern of the first warp is kept even if it is a partial warp; a later warp with lanes outside it is excluded.
-    - **S3:** each prediction is expanded into sectors by replaying the target PC's stored offsets from the predicted base address; this replaces the OQ-9 lane-stride expansion in mode 1. A prediction whose target PC has no stored pattern (row evicted) is dropped and counted.
-  - **Storage (extra, per PC).** The pattern lives in the PC's Head row (OQ-1b; 32 rows, LRU by PC) and is lost with the row (`head_row_evictions`); the next warp to execute the PC stores a new one.
-    - Per row: 1 valid bit + 32-bit lane mask + 31 offsets (the first active lane's offset is 0 by definition).
-    - At 32-bit offsets (OQ-2 widths) that is 1 + 32 + 31×32 = 1,025 bits ≈ 128 B per PC, i.e. ≈ 4.0 KB per SM for 32 rows. That is 5.3× the paper's Head + Tail storage of 768 B (Tab. 3), for a total of ≈ 4.8 KB per SM.
-    - The simulator stores 64-bit offsets. Narrower or delta-encoded offsets would shrink this but are not evaluated.
+  - **Lane mode 1 (stateless run filter, default; revised 2026-10-13, S2c).**
+    - A warp is used (trained on, and a trigger for predictions) if its active-lane addresses fit base + (i mod L)·lane_stride + ⌊i / L⌋·run_stride, where i is the lane index, for some run length L ∈ {32, 16, 8, 4}, tried in that order. L = 32 is the §3.4 rule; L = 16 covers two 16-lane rows of a 16×16 block (e.g. backprop PC 0x180: lane deltas 4 ×15, 8, 4 ×15).
+    - The lane stride comes from the first run with two active lanes, or 0 if none. The run stride comes from the first active lane in a run other than the first active lane's, or 0 if none. Every active lane is then checked exactly.
+    - Otherwise the load is excluded and counted in `warp_excluded_lane_runs`, and the warp's Head register is invalidated, as in mode 0. Accepted run lengths are counted in `lane_runs_{32,16,8,4}`.
+    - Training uses the first active lane's address as the warp address, as in mode 0. The fitted (L, first lane, lane stride, run stride) is the load's lane descriptor (OQ-9).
+  - **Storage.** The filter is stateless: nothing is stored per PC. The per-PC 32-offset pattern of S2b (≈ 4 KB per SM) was removed in S2c. Storage is the paper's 768 B per SM, plus ≈ 8 B per Tail entry only with `-snake_footprint 1` (OQ-9).
   - (decided)
 - **OQ-18 Scheduler.** Paper uses GTO. The base QV100 config says `-gpgpu_scheduler lrr` (`configs/tested-cfgs/SM7_QV100/gpgpusim.config:134`, despite the "Greedy then oldest" comment at :133). Run both baseline and Snake with GTO via a `GTO` extra-param config. (high)
 
 OQ-19…OQ-25 (simulator-specific questions and the decisions on clock, Rodinia version and competitors) are in [SNAKE_PLAN §12](SNAKE_PLAN.md).
+
+## 8. Design limitations observed in our traces
+- **backprop (S2, after the trace-parser fix).** In `bpnn_layerforward` (kernel 1), the inter-thread stride from PC 0x90 to PC 0x180 grows by 128 B per warp. 0x90 (`input_cuda[index_in]`) advances 8 B per warp and 0x180 (`input_hidden_cuda[index]`) 136 B (`hw_run/rodinia-3.1/11.0/backprop-rodinia-3.1/65536/traces/kernel-1.traceg`).
+  - No two warps share the (0x90, 0x180, stride) triple, so T1 is never promoted and no chain forms; every lookup allocates a new condition-3 entry and the 10-entry Tail thrashes.
+  - This is a limitation of the design, which promotes an inter-thread stride only when ≥ 3 warps share it (§3, §3.4), not an implementation error.
+  - Both PCs have fixed per-warp inter-warp strides (8 B and 136 B per warp-ID step), which Snake does learn. That is consistent with the paper's small backprop gain (~1% IPC, Fig. 18).

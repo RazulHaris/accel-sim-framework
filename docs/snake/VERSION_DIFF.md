@@ -92,6 +92,9 @@ So the authors overrode them, or 1530 MHz is the nominal V100 boost clock quoted
    - **The 7-app geometric mean is therefore expected to be below the paper's 17%**, even with a faithful implementation. Compare per benchmark, not only the average.
 8. **Stat accounting:** MSHR_HIT handling and the per-stream format.
 8a. **Trace decoding:** the paper's v1.2.0 simulations most likely mis-decoded predicated memory instructions (see "Pre-756ed33 traces" above). We fix the base+delta case, which changes the L1 hit and DRAM counts of backprop and hotspot.
+   - **The paper's baseline L1 hit rates for backprop and hotspot were therefore likely inflated.** The wild lane addresses of predicated loads repeat across warps, so they hit the same wild line in L1.
+   - In `paperera_vs_v2` (100M instructions, GLOBAL_ACC_R reads), the L1D read hit rate drops from 36.2% to 13.4% for backprop (hits 28,310 → 6,830). For hotspot 512 it drops from 0.99% to 0.38%, and for hotspot 1024 from 1.35% to 0.74%.
+   - The paper's baseline L1 hit rate (45% on average, §5.7) and the headroom Snake had on these two apps may therefore differ from what a correctly decoded baseline shows. That holds whether the authors used pre-fix traces or traced with the v1.2.0 tracer. Compare L1 hit rates with the paper per app, not as a correction to the mean.
 9. **Unknown implementation details:** everything in OQ-1…OQ-18. This is probably the largest source of difference.
 
 ## Recommendation: implement on my current base (`3016c65` / `6c3cf4ff`)

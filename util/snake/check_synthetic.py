@@ -189,14 +189,14 @@ def check_random(path, p):
     st = stats(path)
     for k in ("t1_promotions", "interwarp_trained", "t2_trained"):
         check(st.get("snake_" + k, -1) == 0, "%s == 0: %s" % (k, st.get("snake_" + k)))
-    # Lane mode 0 excludes every scattered P3 load (unequal strides); lane
-    # mode 1 learns P3's pattern from its first warp and excludes the others
-    # (OQ-17).
+    # Scattered P3 lanes fit neither equal strides (lane mode 0) nor any run
+    # length (lane mode 1, OQ-17), so every P3 load is excluded.
     excl = (st.get("snake_warp_excluded_lane_stride", 0) +
-            st.get("snake_warp_excluded_shape", 0))
-    check(excl > 0, "scattered-lane loads excluded: lane-stride %s, shape %s"
-          % (st.get("snake_warp_excluded_lane_stride"),
-             st.get("snake_warp_excluded_shape")))
+            st.get("snake_warp_excluded_lane_runs", 0))
+    n_p3 = p["ctas"] * p["warps"] * p["iters"]
+    check(excl == n_p3, "all %d scattered-lane loads excluded: lane-stride %s, "
+          "lane-runs %s" % (n_p3, st.get("snake_warp_excluded_lane_stride"),
+                            st.get("snake_warp_excluded_lane_runs")))
     print("  info  loads_observed=%s tail_lookups=%s tail_allocs=%s "
           "tail_evictions=%s" % tuple(st.get("snake_" + k) for k in
                                       ("loads_observed", "tail_lookups",

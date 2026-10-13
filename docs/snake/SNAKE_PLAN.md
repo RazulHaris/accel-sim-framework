@@ -25,7 +25,8 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
 | S2b lane-pattern mode (OQ-17) | done | `5b4f096` | `b9cdc46a` | synthetic PASS in lane modes 1 and 0 (`sim_run_snake_synth/S2b`); off-regression PASS on 6 workloads (`sim_run_snake_regress/S2b`); plausibility in `sim_run_snake_train/S2b`: hotspot trains in mode 1 (Tail hits 99%, 80/85 promotions; mode 0 excludes 100%); backprop blocked by mis-decoded trace addresses → trace-parser fix |
 | Trace-parser fix, pre-756ed33 traces (not Snake code) | done | `fe8f37e` | — | exact on the 172,032 / 5,314 / 4,000 affected backprop / hotspot / srad_v1 lines; effect on the baseline in VERSION_DIFF "Pre-756ed33 traces" |
 | Regression reference `bin_ref_v2` + legacy-trace tooling | done | `bed3a2b` | — | synthetic PASS in both lane modes (`sim_run_snake_synth/S2c`); off-regression against `bin_ref_v2` PASS on 6 workloads (`sim_run_snake_regress/S2c`); plausibility re-run in `sim_run_snake_train/S2c` (S2 notes) |
-| Docs: trace-parser fix, upstream issue draft | done | `snake: docs for the trace-parser fix` (hash recorded with S3) | — | — |
+| Docs: trace-parser fix, upstream issue draft | done | `61c0dc1` | — | — |
+| S2c stateless lane-run filter + footprint setting | implemented; gates pending | `snake: S2c lane-run filter + footprint setting` | same title | recorded in the follow-up commit `snake: S2c gate results` |
 | S1 docs + regression tooling | done | `b930d75` | — | — |
 | S3a/S3b issue (intra + inter-thread, then inter-warp) | pending | | | |
 | S4 throttling + decoupling | pending | | | |
@@ -46,7 +47,10 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
   - **hotspot 512 / 1024:** excluded 5.7% / 2.4% in mode 1 (100% in mode 0); Tail hits 99.2% / 99.3%; promotions 80 / 88; chain depth 0: 66% / 63%, 1: 34% / 37%. Plausible.
   - **backprop:** excluded 0% in mode 1 (100% in mode 0: the two printed lanes of PC 0x90 are 16 lanes and 4 B apart, a non-integer lane stride); 0 promotions, chain depth 0 only. Not a defect. The 0x90 → 0x180 stride grows by 128 B per warp (0x90 advances 8 B per warp, 0x180 136 B; `hw_run/.../backprop-rodinia-3.1/65536/traces/kernel-1.traceg`), so no two warps share an inter-thread stride. Each lookup allocates a condition-3 entry (31,989 of 32,069), and the 10-entry Tail thrashes (35,281 evictions). Only the per-PC inter-warp strides are learnable (2.33 inter-warp predictions per load). The paper's backprop gain is also small (~1% IPC, Fig. 18).
   - **srad_v1:** unchanged by the fix (no mis-decoded lines in the simulated kernels); mode 1 excludes 3.9%, mode 0 2.6%; Tail hits 74%; 2207 / 2331 promotions; chain depth 0: 90%, 1: 10%, 2: 0.3%, 3: 0.1%. The `reduce` launches have 26 and 40 load PCs against 10 Tail entries (`util/snake/load_pcs.py`), the `srad` kernel 9.
-- **Lane-pattern mode (OQ-17, decided 2026-10-13, S2b).** `-snake_lane_mode 1` (default) replaces the §3.4 equal-stride rule with a per-PC lane-offset pattern learned from the first warp at that PC and stored in the PC's Head row. `-snake_lane_mode 0` (config token `SNAKE_LANE0`) is the paper-literal rule. Details and the extra storage are in SPEC OQ-17.
+- **Lane mode (OQ-17).** S2b made `-snake_lane_mode 1` a per-PC lane-offset pattern stored in the Head rows (≈ 4 KB per SM). **S2c replaces it with a stateless run filter:** the active lanes must fit base + (i mod L)·lane_stride + ⌊i/L⌋·run_stride for L ∈ {32, 16, 8, 4}, and nothing is stored per PC. `-snake_lane_mode 0` (config token `SNAKE_LANE0`) is the paper-literal rule. Details are in SPEC OQ-17.
+- **Footprint setting (OQ-9, S2c).** `-snake_footprint 0` (default) means one 128 B line per prediction, with only its missing sectors requested. `1` keeps the PC2 load's lane descriptor in each Tail entry (≈ 8 B). S2c adds the option and the storage only; S3 issues the requests.
+- **Inter-warp PCs (S2c).** `snake_interwarp_trained_pcs` counts the distinct (kernel launch, PC) pairs, over all SMs, that got a trained inter-warp stride. `interwarp_trained` counts training events, which repeat when an entry is evicted and re-allocated (backprop: 32,624 events for 2 PCs in S2c).
+- **Step-1 inter-warp check (2026-10-13, no new runs).** The S2c training runs (mode 1) gave `interwarp_trained` = 32,624 for backprop, 160 for each hotspot input and 14,487 for srad_v1. The traces show 2, 2 and 9 load PCs with a fixed per-warp stride, respectively; the srad count is for its `srad` kernel (1 or 2 in the earlier kernels). hotspot's 160 = 2 PCs × 80 SMs.
 - **Inter-warp stride (OQ-6).** It is stored in every Tail entry with that PC1, or in a new PC1-only entry (Fig. 15a), and the latest consistent stride replaces an older one. `snake_interwarp_min_warps` is limited to 2 or 3, because the Head keeps two warps per PC. With `-snake_head_two_warps 0`, the candidates are the per-warp registers whose last load was this PC, nearest warp ID first.
 - **Intra-warp stride (OQ-26).** It is stored in every Tail entry with that PC1. The chain walk follows the most recently used qualifying entry at each step.
 - **Inter-warp prediction targets (OQ-8).** These are the next `interwarp_degree` warps above the current one that were initialised in the same CTA slot. Warp liveness is not tracked in S2.
@@ -64,10 +68,10 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
 ## 1. Design summary
 - **One object per SM.** Each `ldst_unit` owns a `snake_prefetcher`. The object is only constructed when `-snake_enable 1`; with Snake off, every hook is a null-pointer check.
 - **Training.** `ldst_unit::issue` passes (warp slot, CTA slot, PC, active mask, lane addresses, stream) to `snake_prefetcher::observe()` for L1-cached global loads. Observe does:
-  - the lane check (OQ-17): lane-pattern match by default, or the §3.4 equal-stride rule in lane mode 0
+  - the lane check (OQ-17): the stateless run filter (L ∈ {32, 16, 8, 4}) by default, or the §3.4 equal-stride rule in lane mode 0
   - the Head update, which produces (q, p, s)
   - Tail match / allocate / bit-set, plus inter-thread, intra-warp and inter-warp training (§3.1)
-  - prediction (§3.2): it computes target warp base addresses and expands each into sector addresses by replaying the target PC's stored lane pattern (lane mode 1, OQ-17), or with the triggering access's lane stride and active-lane count (lane mode 0, OQ-9)
+  - prediction (§3.2): it computes target warp base addresses and expands each one (OQ-9, `-snake_footprint`): by default the 128 B line holding the address (only missing sectors), or with `1` the target load's lane descriptor (PC2's, from the Tail entry, for inter-thread predictions; the triggering load's for inter-warp and intra-warp)
   - results go into a bounded **prefetch queue**, tagged ready at `now + snake_latency` (2 cycles, §5.5)
 - **Issue.** `ldst_unit::cycle` calls `snake->tick()` after `L1_latency_queue_cycle()`, so demand requests win the port. Tick:
   - pops ≤`snake_issue_width` ready entries, unless throttled
@@ -197,7 +201,8 @@ Budget with Snake on: **≤15% slower** simulation. With Snake off: **within run
 | `snake_max_chain_depth` | uint | 3 | OQ-7 |
 | `snake_interwarp_degree` | uint | 4 | OQ-8 |
 | `snake_enable_inter_thread` / `_inter_warp` / `_intra_warp` | bool | 1/1/1 | s-Snake = 1/0/0 (§4) |
-| `snake_lane_mode` | uint | 1 | 0 = §3.4 equal lane strides; 1 = per-PC lane pattern (deviation, OQ-17) |
+| `snake_lane_mode` | uint | 1 | 0 = §3.4 equal lane strides; 1 = stateless run filter, L ∈ {32,16,8,4} (deviation, OQ-17) |
+| `snake_footprint` | uint | 0 | 0 = one 128 B line per prediction (missing sectors only); 1 = exact lane descriptor per Tail entry (OQ-9) |
 | `snake_require_equal_lane_stride` | bool | 1 | §3.4; lane mode 0 only |
 | `snake_latency` | uint | 2 | §5.5 |
 | `snake_queue_size` | uint | 32 | OQ-4 |
@@ -231,7 +236,7 @@ The ablations come from these flags:
   - `accuracy_paper = timely/demand`
   - `accuracy_std = (timely+late)/issued`
   - `timeliness = timely/(timely+late)`
-- **Tables:** `head_updates`, `tail_lookups`, `tail_hits`, `tail_allocs`, `tail_evictions`, `t1_promotions`, `t1_demotions`, `t2_trained`, `interwarp_trained`, `warp_excluded_lane_stride` (mode 0), `warp_excluded_shape`, `shape_learned`, `head_row_evictions` (mode 1, OQ-17), `chain_depth_hist[0..D]`.
+- **Tables:** `head_updates`, `tail_lookups`, `tail_hits`, `tail_allocs`, `tail_evictions`, `t1_promotions`, `t1_demotions`, `t2_trained`, `interwarp_trained`, `interwarp_trained_pcs`, `warp_excluded_lane_stride` (mode 0), `warp_excluded_lane_runs`, `lane_runs_{32,16,8,4}` (mode 1, OQ-17), `head_row_evictions`, `chain_depth_hist[0..D]`.
 - **Per mode:** {inter_thread, inter_warp, intra_warp} × {generated, issued, useful, late, unused}.
 - **Throttle:** `throttle_space_events`, `throttle_bw_events`, `throttled_cycles`, `bw_util_hist`, and an optional time series (`snake_throttle_log` every N cycles).
 - **Decoupling:** `region_flips`, `bulk_frees`, `bulk_free_l1_side` / `_pf_side`, `l1_quota_victims`.
@@ -245,6 +250,12 @@ The ablations come from these flags:
   - **Done 2026-10-08:** gpgpu-sim `e0d23397`, accel-sim `d49e1f3`. Off-regression PASS on 5 workloads (hotspot has two inputs).
 - **S2 Training only.** Head/Tail/T1/T2/inter-warp, lane-stride check, demotion, kernel/warp resets, eviction policy, `snake_debug_trace`.
   - *Done when:* synthetic traces (§9.2) give the expected strides and promotions (unit-style assertions on the debug log), and on rodinia hotspot, srad_v1 and backprop `tail_hits/lookups`, promotions and the chain-depth histogram are plausible. Timing is still identical to baseline, since there is no issue.
+  - **S2 done 2026-10-13:** gpgpu-sim `ace5cc70`, accel-sim `e4030cd`. Synthetic PASS, off-regression PASS. Deviation: hotspot/backprop were implausible under the §3.4 lane rule → OQ-17.
+  - **S2b done 2026-10-13:** gpgpu-sim `b9cdc46a`, accel-sim `5b4f096`. Per-PC lane-pattern mode (OQ-17 deviation). Gates PASS. backprop then exposed the trace-decoding bug: parser fix `fe8f37e`, reference `bin_ref_v2` from `bed3a2b`, docs `61c0dc1`.
+- **S2c Stateless lane-run filter + footprint setting** (decided 2026-10-13).
+  - Lane mode 1 becomes the run filter (OQ-17), and the S2b per-PC pattern is deleted. `-snake_footprint` gets the setting and the Tail descriptor storage (OQ-9). `snake_interwarp_trained_pcs` is added.
+  - *Done when:* Fig. 15 and the synthetic traces pass in both lane modes. Plausibility on hotspot, backprop and srad_v1 (mode 1): exclusion, promotions, `interwarp_trained`(`_pcs`), chain depth. Off-regression against `bin_ref_v2`, reusing the cached S2c reference outputs.
+  - Status: see §0 (hashes and gate results in `snake: S2c gate results`).
 - **S3a Intra-warp + inter-thread issue, no throttling or decoupling.** Then **S3b** adds inter-warp.
   - *Done when:* there are no deadlocks on the full suite at a 100M-instruction cap, the `pf_woken_warps` assert is 0, the invariant holds, and accuracy and coverage print. The strided microbenchmark reaches coverage ≥90%.
 - **S4 Throttling + decoupling** (modes 0/1/2).
@@ -255,6 +266,7 @@ The ablations come from these flags:
 ## 9. Verification
 1. **Off-regression.**
    - Reference: `/home/razul/snake/bin_ref_v2/` (`accel-sim.out` + `lib/libcudart.so`, the clean bases plus the trace-parser fix; outside the repo; `SNAKE_BIN_REF` overrides). Run it with `LD_LIBRARY_PATH=/home/razul/snake/bin_ref_v2/lib`. Until 2026-10-13 (S1–S2b) the reference was the clean-base build, now `bin_ref_paperera`. `util/snake/compare_bins.sh <name> <build a> <build b>` compares two builds on these workloads (`sim_run_snake_refcmp/<name>`).
+   - Cached reference outputs: `REF_FROM=<stage>` reuses an earlier stage's `ref` outputs (symlink) when that stage ran the same reference build, so `bin_ref_v2` runs only once (`sim_run_snake_regress/S2c/ref`) until it changes.
    - Runner: `util/snake/off_regression.sh <stage>` (from S1 docs commit on). It refuses a dirty tree or a branch other than `Snake`, freezes the build into `sim_run_snake_regress/<stage>/bin_new`, and runs ref / off / on on rodinia-3.1 backprop, hotspot (2 inputs), nw, srad_v1 (added in S2) and parboil histo, `QV100-SASS-PAPER_V100-100M_INSN`.
    - Compare after `util/snake/regress_norm.py`, which removes only volatile lines (wall-clock, simulation rate, build strings, binary paths) and the added `-snake_*` option-dump lines, and makes two heap-address-dependent debug dumps comparable (pending-request list sorted, MSHR pointers masked). **Must be identical.** The final cycles, instructions, L1D read hits/misses and DRAM reads are also compared raw. Repeat at every stage.
 2. **Microbenchmarks.** `gen_synthetic_traces.py` writes accel-sim text traces (no GPU needed):
@@ -326,5 +338,6 @@ All of OQ-1…OQ-18 from SPEC §7 carry over, plus:
 - **OQ-25 Competitor prefetchers** (INTRA, INTER, MTA, CTA-Aware, Tree). **Decided:** none for now; Snake ablations only.
 - **OQ-26 Intra-warp stride storage (S2).** The stride belongs to the load PC and is kept in every Tail entry with that PC1. The non-consecutive case walks this warp's chain through the most recently used qualifying entry at each step. (medium)
 - **OQ-27 Promotion-time targets (S2).** "Issues prefetching requests for all future warps as soon as … promoted" (§3.2) is read as: every other warp whose Head register is at PC1 and whose warpID bit is not yet set. (medium)
-- **OQ-17 Lane check.** **Decided 2026-10-13:** lane-pattern match (`snake_lane_mode 1`) by default, a deviation from §3.4; the paper-literal rule stays as mode 0. See SPEC OQ-17.
+- **OQ-17 Lane check.** **Decided 2026-10-13:** by default `snake_lane_mode 1`, a deviation from §3.4: the per-PC lane pattern in S2b, replaced in S2c by the stateless run filter. The paper-literal rule stays as mode 0. See SPEC OQ-17.
+- **OQ-9 Footprint.** **Revised 2026-10-13 (S2c):** `snake_footprint` 0 = one 128 B line (default), 1 = exact lane descriptor per Tail entry. See SPEC OQ-9.
 - **OQ-28 Demotion (S2).** A demoted entry (more than `demote_removed` warps removed, §3.2) also clears its warpID vector, so it is re-trained from scratch instead of being re-promoted by the remaining bits. (low)
