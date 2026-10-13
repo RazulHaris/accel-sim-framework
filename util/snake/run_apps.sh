@@ -37,8 +37,8 @@ tags="$(strings "$BIN/accel-sim.out" | grep -o 'accelsim-commit-[^ "]*' | head -
 { echo "$(date '+%F %T') build $BIN: $tags"; echo "configs: $CFGS"; echo "apps: $APPS"; } | tee "$OUT/BUILDS.txt"
 [ "$(echo "$tags" | grep -o '_modified_0\.0' | wc -l)" = 2 ] || { echo "ABORT: build is not _modified_0.0 twice"; exit 1; }
 
-ROD=$(echo "$APPS" | tr ',' '\n' | grep '^rodinia-3.1' | paste -sd, -)
-PB=$(echo "$APPS" | tr ',' '\n' | grep '^parboil' | paste -sd, -)
+ROD=$(echo "$APPS" | tr ',' '\n' | { grep '^rodinia-3.1' || true; } | paste -sd, -)
+PB=$(echo "$APPS" | tr ',' '\n' | { grep '^parboil' || true; } | paste -sd, -)
 [ -z "$ROD" ] || python3 util/job_launching/run_simulations.py -B "$ROD" -C "$CFGS" \
     -T hw_run/rodinia-3.1/11.0 -N "$(basename "$OUT")_rod" -r "$OUT/runs" -n >/dev/null
 [ -z "$PB" ] || python3 util/job_launching/run_simulations.py -B "$PB" -C "$CFGS" \
