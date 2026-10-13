@@ -241,6 +241,15 @@ SNAKE_LANE0:
 SNAKE_FP1:
     extra_params: "-snake_footprint 1"
 
+# Miss-queue slots kept free for demand (OQ-11), for the S3a choice of the
+# -snake_missq_reserve default and the S5 sweep.
+SNAKE_MQR2:
+    extra_params: "-snake_missq_reserve 2"
+SNAKE_MQR4:
+    extra_params: "-snake_missq_reserve 4"
+SNAKE_MQR8:
+    extra_params: "-snake_missq_reserve 8"
+
 # One LRR scheduler per SM without the sub-core model, so the warps of a CTA
 # issue strictly round robin, as in the paper's Fig. 15 example.
 SYNTH_LRR1:
