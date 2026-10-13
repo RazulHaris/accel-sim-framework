@@ -132,6 +132,26 @@ void inst_memadd_info_t::base_delta_decompress(
   }
 }
 
+static unsigned long long g_legacy_base_delta_lines = 0;
+
+unsigned long long legacy_base_delta_lines() {
+  return g_legacy_base_delta_lines;
+}
+
+void inst_memadd_info_t::legacy_base_delta_decompress(
+    unsigned long long base_address, const std::vector<long long> &deltas,
+    const std::bitset<WARP_SIZE> &mask) {
+  // deltas[s - 1] is lane s's address minus lane s-1's, for every lane; the
+  // addresses of lanes whose predicate was off are not used, but the sums
+  // through them are exact.
+  assert(deltas.size() == WARP_SIZE - 1);
+  unsigned long long addr = base_address;
+  for (int s = 0; s < WARP_SIZE; s++) {
+    if (s > 0) addr += deltas[s - 1];
+    addrs[s] = mask.test(s) ? addr : 0;
+  }
+}
+
 bool inst_trace_t::parse_from_string(std::string trace, unsigned trace_version,
                                      unsigned enable_lineinfo) {
   std::stringstream ss;
@@ -209,6 +229,23 @@ bool inst_trace_t::parse_from_string(std::string trace, unsigned trace_version,
       std::vector<long long> deltas;
       // read addresses as base address and deltas
       ss >> std::hex >> base_address;
+      if (trace_version <= 3 && mask_bits.count() < WARP_SIZE) {
+        // A pre-756ed33 line has 31 deltas and nothing after them (version 3
+        // traces have no immediate field); any other line is decoded below
+        // exactly as before.
+        const std::streampos pos = ss.tellg();
+        std::vector<long long> all;
+        long long delta = 0;
+        while (ss >> std::dec >> delta) all.push_back(delta);
+        if (all.size() == WARP_SIZE - 1) {
+          memadd_info->legacy_base_delta_decompress(base_address, all,
+                                                    mask_bits);
+          g_legacy_base_delta_lines++;
+          return true;  // the line is fully consumed; imm stays 0
+        }
+        ss.clear();
+        ss.seekg(pos);
+      }
       for (int s = 0; s < WARP_SIZE; s++) {
         if (mask_bits.test(s)) {
           long long delta = 0;

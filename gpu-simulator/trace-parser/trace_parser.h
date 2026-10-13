@@ -40,6 +40,13 @@ struct inst_memadd_info_t {
 
   void base_stride_decompress(unsigned long long base_address, int stride,
                               const std::bitset<WARP_SIZE> &mask);
+  // Traces written before tracer commit 756ed33 (2020-11-06, tracer
+  // version <= 3) compressed the addresses over the active mask but printed
+  // the active & predicate mask.  A base+delta line of such a trace with a
+  // partial printed mask then carries 31 deltas, one per lane 1..31.
+  void legacy_base_delta_decompress(unsigned long long base_address,
+                                    const std::vector<long long> &deltas,
+                                    const std::bitset<WARP_SIZE> &mask);
   void base_delta_decompress(unsigned long long base_address,
                              const std::vector<long long> &deltas,
                              const std::bitset<WARP_SIZE> &mask);
@@ -154,5 +161,9 @@ class trace_parser {
  private:
   std::string kernellist_filename;
 };
+
+// Number of base+delta lines decoded by legacy_base_delta_decompress() in
+// this run.
+unsigned long long legacy_base_delta_lines();
 
 #endif

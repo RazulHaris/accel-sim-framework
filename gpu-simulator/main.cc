@@ -29,6 +29,9 @@ int main(int argc, const char **argv) {
   accel_sim_framework accel_sim(argc, argv);
   accel_sim.simulation_loop();
 
+  printf("accel-sim: pre-756ed33 base+delta trace lines re-decoded = %llu\n",
+         legacy_base_delta_lines());
+
   // we print this message to inform the gpgpu-simulation stats_collect script
   // that we are done
   printf("GPGPU-Sim: *** simulation thread exiting ***\n");
