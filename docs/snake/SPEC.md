@@ -152,9 +152,15 @@ Format: interpretation (confidence).
   - Expose `snake_head_entries` = 32 as the capacity of (b). (low)
 - **OQ-2 Field widths.** Use 64-bit addresses and strides in the simulator, since Accel-Sim addresses are 64-bit. Report the paper's 32-bit storage figure unchanged. (medium)
 - **OQ-3 Tail eviction.** "LRU group" = the `snake_tail_lru_group` (default 3) least-recently-used entries; evict the one with the fewest set bits. Paper silent on group size. (low)
-- **OQ-4 Prefetch queue.**
-  - 32 entries, FIFO; drop the newest when full.
-  - Issue ≤1 prefetch/cycle, only in cycles where the L1D port was not used by a demand access. (low)
+- **OQ-4 Prefetch queue.** **Revised 2026-10-13 (S3a): one entry per 128 B line**, the paper's prefetch unit (Fig. 15 lists one address per warp).
+  - `snake_queue_size` = 32 line entries, FIFO.
+    - A predicted line already queued absorbs the new sectors; sectors already pending count as `pf_dup_queue`.
+    - A new line with the queue full is dropped, newest first; its sectors count in `pf_drop_queue_full`.
+  - Each entry becomes ready `snake_latency` (2) cycles after its prediction.
+  - `snake_issue_width` = 1 line per cycle. When it issues, the line's sectors not yet offered go to the L1D, one per L1D bank and only to banks no demand access used in that cycle, and only while the data port is free. A sector whose bank is busy waits; each sector is offered once.
+  - A prefetch line therefore never gets more L1D or miss-queue bandwidth per cycle than a demand access to the same line: ≤ 4 sector accesses across the 4 banks, each subject to the demand's miss-queue test. Demand still goes first, since issue runs after the demand stage.
+  - **Why per line.** With one sector per entry, the S3a test trace (d) overflowed the queue (5,695 sectors dropped) and reached only 82.8% coverage_paper. With one line per entry it reaches 93.0%.
+  - Queue size and issue width are S5 sweep parameters. (decided)
 - **OQ-5 T1/T2 encoding.** 00 = untrained → 01 = observed (≥1 warp) → 10 = promoted (≥3 warps, prefetch for others) → 11 = trained (repetition confirmed; also allows chaining). Text and figure partly conflict. (low)
   - **Correction (S2):** Fig. 15 does not use these codes. It prints the promoted entry of phase (b) as '01', the trained one of (c) as '11', and a one-warp entry and a new intra stride as '00'. The *states* match the order above; only the printed codes differ, so the codes are treated as internal labels (SNAKE_PLAN S2 notes).
 - **OQ-6 Inter-warp stride.** Normalised per warp-ID distance: (a_j − a_i)/(w_j − w_i), equal across ≥3 warps, as in Fig. 15a. (medium)
@@ -167,16 +173,22 @@ Format: interpretation (confidence).
     - Inter-thread predictions target PC2, so they replay the PC2 descriptor of the entry that produced them.
     - Inter-warp and intra-warp predictions target the triggering load's own PC, so they use that load's descriptor and need no storage.
     - The active mask is not stored, so S3 replays all 32 lanes of the descriptor, anchored so that the predicted address is the first active lane's.
+  - **S3a:** both footprints group their sectors by 128 B line into queue entries (OQ-4). Line mode requests all sectors of the line, and those already in L1 or in flight are dropped at issue (`pf_dup_l1`, `pf_dup_mshr`). Without a descriptor, exact mode falls back to the line.
   - (decided; replaces the earlier "triggering access's lane stride and active-lane count" expansion)
 - **OQ-10 Bandwidth throttle.**
   - Per-SM injected L1→icnt bytes per window, divided by the per-SM share of peak L1↔L2 bandwidth.
   - Window `snake_bw_window` = 100 cycles; hysteresis 70%/50%.
   - Evaluated at the end of each window. (low)
 - **OQ-11 MSHR and miss queue.**
-  - A prefetch allocates an L1 MSHR entry, so demand misses can merge into it ("late prefetch").
-  - It is issued only if MSHR free entries > `snake_mshr_reserve` (default 8) and the miss queue has space.
-  - Otherwise it is dropped and counted.
-  - Demand always wins arbitration. (medium)
+  - A prefetch sector allocates its line or sector, an L1 MSHR entry and a miss-queue slot through `send_read_request`, like a demand read miss, as an `L1_PREFETCH_R` read with no instruction. Demand misses can merge into it ("late prefetch").
+  - **Implemented (S3a, `l1_cache::snake_prefetch`):** a sector is offered once and never retried.
+    - Already valid or reserved in L1 → `pf_dup_l1`; an MSHR entry exists → `pf_dup_mshr`.
+    - No line can be reserved in the set → `pf_drop_line`.
+    - Free MSHR entries ≤ `snake_mshr_reserve` (8) → `pf_drop_mshr`.
+    - Miss queue full by the demand read-miss test (`miss_queue_full(1)`) → `pf_drop_miss_queue`.
+    - `pf_drop_resource` is the sum of the last three.
+  - **`pf_caused_resfail`:** a demand reservation failure counts as caused by Snake when the MSHR table was full while prefetches held entries, or the miss queue was full while it held prefetches. Failures for lack of a free line in the set are not attributed.
+  - Demand always wins arbitration (OQ-4). (medium)
 - **OQ-12 Decoupling semantics.**
   - Implement in the L1D tag array: a per-line `prefetched` flag plus a per-set quota-aware victim choice.
   - "No free space" = the fill's set has no invalid, unreserved line.
@@ -187,11 +199,18 @@ Format: interpretation (confidence).
   - Rodinia version: paper unstated. Local traces exist for both 2.0-ft (srad_v2) and 3.1 (srad_v1).
   - **ISPASS CP/LPS/LIB/MUM traces are not available locally.** They're also absent from the public V100 1.1.0 trace set. CP is commented out ("compile issues"), and only LPS is built in gpu-app-collection. The local GPU is an RTX 2080 Ti (SM75), not a V100.
   - **Decided (2026-10-01):** ISPASS is deferred. The first evaluation uses 7 apps: rodinia-3.1 backprop / hotspot / srad_v1 / lud / nw and parboil histo / mri-q. See VERSION_DIFF for the effect on the average.
-- **OQ-14 Metric definitions.** Report the paper's definitions and the standard ones:
-  - coverage_paper = (timely + late useful) / demand accesses
-  - accuracy_paper = timely useful / demand accesses
-  - accuracy_std = useful / issued
-  - Granularity: sector accesses at L1D. (medium)
+- **OQ-14 Metric definitions.** **Revised 2026-10-13 (S3a).** All metrics are reported, all at the granularity of L1D sector accesses. Demand = `GLOBAL_ACC_R` accesses that did not fail with RESERVATION_FAIL (`snake_demand_sector_accesses`).
+  - **coverage_pred** = demand sectors that a prediction generated earlier named, whether issued or not, within `snake_pred_window` (5000) cycles / demand sectors. Each prediction matches one demand access.
+  - **coverage_paper** = (timely + late) / demand sectors.
+  - **accuracy_paper** = timely / demand sectors.
+  - **accuracy_std** = (timely + late) / issued.
+  - **The paper's terms.** Its "coverage" ("correctly predicted addresses / total demand addresses", §4) most likely means **coverage_pred**: predictions, independent of issue. Its "accuracy" ("timely correctly predicted addresses") means timely prefetches, i.e. **accuracy_paper**. Both readings are kept: coverage_paper is what the issued prefetches achieved, coverage_pred what the predictor named.
+  - **Outcomes of an issued sector** (each ends in exactly one; the invariant is printed as `snake_pf_invariant`):
+    - **late:** a demand merged into its MSHR entry before the fill.
+    - **timely:** the first demand access (load or store) hit the filled sector.
+    - **evicted_unused:** evicted, or found stale at a later fill, with its bit still set.
+    - **unused_at_end:** dropped by an L1D invalidation between kernels, still resident and unused, or still in flight without a merge at the end of the run.
+  - (decided)
 - **OQ-15 50%-until-trained.** Applies per kernel launch, from launch until the first Tail entry reaches promoted. (low)
 - **OQ-16 Energy.** AccelWattch is not modified. Add Snake energy offline: accesses × 6.4 pJ + 6 mW × time, from Snake stats. (medium)
 - **OQ-17 Which warps Snake uses (lane check).** **Decided 2026-10-13: a deliberate deviation from §3.4, selected by `-snake_lane_mode`.**

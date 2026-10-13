@@ -18,6 +18,14 @@ LDG.E with base+stride address compression (mode 1, trace_parser.cc:200).
 (b) snake-synth-random: the same loop shape, but every warp-level base is
     random (lanes still 4 B apart), and P3's lanes are scattered (unequal lane
     strides, so it is excluded, OQ-17).  Nothing should be promoted.
+(d) snake-synth-strided-dep: the loop of (a) (same address formula, 32
+    iterations) where each iteration ends with an IADD3 that reads the three
+    loaded registers and writes R2, the address register of the next
+    iteration's loads.  Every warp therefore waits for memory once per
+    iteration, the case Snake's chain and intra-warp prefetches are meant to
+    hide; this trace carries the S3 coverage gate.  (a) issues all its loads
+    back to back and saturates the L1 miss queue, so from S3 on it is a
+    saturation test only.
 (c) snake-synth-fig15: the paper's Fig. 15 example.  One CTA of 5 warps:
     warp 0 only exits, and W1..W4 are warps 1..4, so that warp IDs, warpID
     bits and the inter-warp stride per warp-ID step match the figure and a
@@ -106,6 +114,36 @@ def strided(root):
     return p
 
 
+def alu(pc, dest_reg, srcs):
+    return "%04x %s 1 R%d IADD3 %d %s 0 " % (
+        pc, FULL, dest_reg, len(srcs), " ".join("R%d" % r for r in srcs))
+
+
+def strided_dep(root):
+    p = dict(ctas=4, warps=8, iters=32, A=0x10000000, WS=512, IT=65536,
+             D1=1 << 20, D2=1 << 20, pcs=[0x100, 0x110, 0x120], alu_pc=0x128)
+    ctas = []
+    for c in range(p["ctas"]):
+        warps = []
+        for w in range(p["warps"]):
+            g = c * p["warps"] + w
+            insts = []
+            for i in range(p["iters"]):
+                a1 = p["A"] + g * p["WS"] + i * p["IT"]
+                for k, (pc, a) in enumerate(zip(p["pcs"], [a1, a1 + p["D1"],
+                                                           a1 + p["D1"] + p["D2"]])):
+                    insts.append(ldg(pc, 4 + k, a))
+                # next iteration's loads read R2, written from this
+                # iteration's loaded values
+                insts.append(alu(p["alu_pc"], 2, [4, 5, 6]))
+            insts.append(exit_inst(0x130))
+            warps.append(insts)
+        ctas.append(warps)
+    write_app(root, "snake-synth-strided-dep", "snake_synth_strided_dep",
+              p["ctas"], p["warps"] * 32, ctas)
+    return p
+
+
 def random_gather(root):
     p = dict(ctas=4, warps=8, iters=16, seed=20261010, pcs=[0x100, 0x110, 0x120])
     rng = random.Random(p["seed"])
@@ -154,6 +192,7 @@ def main():
     root = sys.argv[1]
     os.makedirs(root, exist_ok=True)
     manifest = {"snake-synth-strided": strided(root),
+                "snake-synth-strided-dep": strided_dep(root),
                 "snake-synth-random": random_gather(root),
                 "snake-synth-fig15": fig15(root)}
     with open(os.path.join(root, "manifest.json"), "w") as f:

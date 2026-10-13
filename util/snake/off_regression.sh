@@ -23,6 +23,8 @@
 # usage: off_regression.sh <stage> [insn_cap] [parallel]
 #   e.g. off_regression.sh S1
 #   COMPARE_ONLY=1 off_regression.sh S1   re-compares an existing run
+#   ON=0 off_regression.sh S3a   runs ref and off only (from S3 on, Snake on
+#       changes timing, and its runs belong to the stage's own gate)
 #   REF_FROM=<earlier stage> off_regression.sh S3
 #       reuses that stage's ref outputs instead of re-running the reference;
 #       refused unless that stage's ref build is the current $REF (same build
@@ -78,8 +80,10 @@ if [ -n "$REF_FROM" ]; then
 fi
 
 # Job directories (configs, trace links); -n = do not launch.
+ON=${ON:-1}
 for v in ref off on; do
   [ $v = ref ] && [ -n "$REF_FROM" ] && continue
+  [ $v = on ] && [ "$ON" = 0 ] && continue
   c=$CFG; [ $v = on ] && c=$CFG-SNAKE
   python3 util/job_launching/run_simulations.py -B $ROD_APPS -C $c -T hw_run/rodinia-3.1/11.0 \
       -N snake_regress_${STAGE}_${v}_rod -r "$OUT/$v" -n >/dev/null
@@ -95,7 +99,7 @@ run_job() {  # <job dir> <binary dir>
 export -f run_job; export OUT
 {
   [ -n "$REF_FROM" ] || for d in $(find "$OUT/ref" -name justrun.sh -printf '%h\n'); do echo "$d $REF"; done
-  for d in $(find "$OUT/off" "$OUT/on" -name justrun.sh -printf '%h\n'); do echo "$d $OUT/bin_new"; done
+  for d in $(find "$OUT/off" $([ "$ON" = 0 ] || echo "$OUT/on") -name justrun.sh -printf '%h\n'); do echo "$d $OUT/bin_new"; done
 } | xargs -P "$PAR" -L 1 bash -c 'run_job "$0" "$1"'
 fi
 
@@ -123,12 +127,18 @@ for j in $(cd "$OUT/ref" && find . -name sim.out); do
   else
     echo "FAIL ref!=off  $name"; diff <(norm "$r") <(norm "$o") | head -20; status=1
   fi
+  kr=$(keystats "$r"); ko=$(keystats "$o")
+  if [ "${ON:-1}" = 0 ]; then
+    if [ "$kr" = "$ko" ]; then echo "     raw stats ref==off: $kr"
+    else echo "FAIL raw stats  ref: $kr"; echo "                off: $ko"; status=1; fi
+    continue
+  fi
   if diff -q <(norm "$o") <(norm "$n" --strip-snake-block) >/dev/null; then
     echo "     off==on   $name  (Snake block: $(grep -c '^snake_' "$n") lines)"
   else
     echo "FAIL off!=on   $name"; diff <(norm "$o") <(norm "$n" --strip-snake-block) | head -10; status=1
   fi
-  kr=$(keystats "$r"); ko=$(keystats "$o"); kn=$(keystats "$n")
+  kn=$(keystats "$n")
   if [ "$kr" = "$ko" ] && [ "$ko" = "$kn" ]; then
     echo "     raw stats ref==off==on: $kr"
   else

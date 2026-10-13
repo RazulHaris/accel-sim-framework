@@ -236,6 +236,11 @@ SNAKE_DBG:
 SNAKE_LANE0:
     extra_params: "-snake_lane_mode 0"
 
+# Exact prefetch footprint: replay the target load's lane descriptor (OQ-9);
+# the default is one 128 B line per prediction.
+SNAKE_FP1:
+    extra_params: "-snake_footprint 1"
+
 # One LRR scheduler per SM without the sub-core model, so the warps of a CTA
 # issue strictly round robin, as in the paper's Fig. 15 example.
 SYNTH_LRR1:

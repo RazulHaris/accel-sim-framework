@@ -10,6 +10,15 @@ gen_synthetic_traces.py.  Exit status 0 only if every check passes.
 
 T1/T2 are compared by state name (OQ-5).  The figure prints codes for them
 that differ from the OQ-5 labels; the mapping is printed, not asserted.
+
+From S3a on (prefetches issued), every run must also finish ("exit
+detected"), wake no warp with a prefetch and keep the outcome invariant
+(snake_pf_invariant OK).  Trace (d) needs coverage_paper >= 90% with the
+exact footprint (-snake_footprint 1; reported for the line footprint), trace
+(a) is a saturation test (its demand loads fill the L1 miss queue; the
+MISS_QUEUE_FULL failures and the prefetch drops are reported) and trace (b)
+must issue almost nothing (< 1% of its demand sectors).  coverage_pred
+(OQ-14) is reported next to coverage_paper and accuracy_paper.
 """
 import glob
 import json
@@ -76,8 +85,43 @@ def stats(path):
     for line in open(path, errors="replace"):
         if line.startswith("snake_"):
             k, _, v = line.partition(" = ")
-            out[k.strip()] = int(v)
+            try:
+                out[k.strip()] = int(v)
+            except ValueError:
+                out[k.strip()] = v.split()[0]
+        elif line.startswith("-snake_footprint"):
+            out["footprint"] = int(line.split()[1])
+        elif "exit detected" in line:
+            out["done"] = True
+        elif "Total_core_cache_fail_stats_breakdown[GLOBAL_ACC_R][MISS_QUEUE_FULL]" in line:
+            out["mq_full"] = int(line.split("=")[1])
     return out
+
+
+def check_issue(path, st):
+    """S3a: no deadlock, no warp woken by a prefetch, invariant."""
+    check(st.get("done", False), "run finished (no deadlock)")
+    check(st.get("snake_pf_woken_warps") == 0,
+          "pf_woken_warps == 0: %s" % st.get("snake_pf_woken_warps"))
+    check(st.get("snake_pf_invariant") == "OK",
+          "outcome invariant: %s" % st.get("snake_pf_invariant"))
+    dem = max(st.get("snake_demand_sector_accesses", 0), 1)
+    tl = st.get("snake_pf_useful_timely", 0) + st.get("snake_pf_late", 0)
+    print("  info  footprint=%s issued=%s timely=%s late=%s evicted_unused=%s "
+          "unused_at_end=%s demand=%s" % (
+              st.get("footprint"), st.get("snake_pf_issued"),
+              st.get("snake_pf_useful_timely"), st.get("snake_pf_late"),
+              st.get("snake_pf_evicted_unused"),
+              st.get("snake_pf_unused_at_end_total"), dem))
+    print("  info  coverage_paper=%.1f%% accuracy_paper=%.1f%% coverage_pred=%.1f%%; "
+          "dropped: line %s, MSHR %s, miss queue %s, prefetch queue full %s; "
+          "demand MISS_QUEUE_FULL %s" % (
+              100.0 * tl / dem, 100.0 * st.get("snake_pf_useful_timely", 0) / dem,
+              100.0 * st.get("snake_demand_pred_matched", 0) / dem,
+              st.get("snake_pf_drop_line"), st.get("snake_pf_drop_mshr"),
+              st.get("snake_pf_drop_miss_queue"), st.get("snake_pf_drop_queue_full"),
+              st.get("mq_full", 0)))
+    return tl / dem
 
 
 def bits(*warps):
@@ -99,6 +143,7 @@ def sim_out(runs, app, cfg):
 
 def check_fig15(path, p):
     print("== (c) Fig. 15 example: %s" % path)
+    check_issue(path, stats(path))
     d = parse(path)
     check(list(d) == [0], "all observes on SM 0 (one CTA)")
     d = d.get(0, {"obs": [], "preds": {}, "state": {}})
@@ -162,6 +207,7 @@ def check_strided(path, p):
     P1, P2, P3 = p["pcs"]
     chain = [(P1, P2, p["D1"]), (P2, P3, p["D2"]),
              (P3, P1, p["IT"] - p["D1"] - p["D2"])]
+    check_issue(path, st)  # S3: saturation test, no coverage gate
     sms = sorted(sm for sm in d if d[sm]["state"])
     check(len(sms) == p["ctas"], "one SM per CTA trained: SMs %s" % sms)
     for sm in sms:
@@ -184,9 +230,25 @@ def check_strided(path, p):
                    "t2_trained", "tail_hits", "tail_lookups")))
 
 
+def check_strided_dep(path, p):
+    print("== (d) strided loop, one memory wait per iteration: %s" % path)
+    st = stats(path)
+    cov = check_issue(path, st)
+    if st.get("footprint") == 1:
+        check(cov >= 0.90, "coverage_paper >= 90%% (exact footprint): %.1f%%"
+              % (100 * cov))
+    else:
+        print("  info  coverage_paper with the line footprint: %.1f%%" % (100 * cov))
+
+
 def check_random(path, p):
     print("== (b) random gather: %s" % path)
     st = stats(path)
+    check_issue(path, st)
+    dem = st.get("snake_demand_sector_accesses", 0)
+    check(st.get("snake_pf_issued", 0) < 0.01 * max(dem, 1),
+          "issues almost nothing (< 1%% of %d demand sectors): %s"
+          % (dem, st.get("snake_pf_issued")))
     for k in ("t1_promotions", "interwarp_trained", "t2_trained"):
         check(st.get("snake_" + k, -1) == 0, "%s == 0: %s" % (k, st.get("snake_" + k)))
     # Scattered P3 lanes fit neither equal strides (lane mode 0) nor any run
@@ -209,6 +271,7 @@ def main():
     man = json.load(open(os.path.join(root, "manifest.json")))
     for app, fn in (("snake-synth-fig15", check_fig15),
                     ("snake-synth-strided", check_strided),
+                    ("snake-synth-strided-dep", check_strided_dep),
                     ("snake-synth-random", check_random)):
         path = sim_out(runs, app, cfg)
         if path:

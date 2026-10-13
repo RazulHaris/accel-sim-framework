@@ -10,6 +10,9 @@ snake-synth:
         - snake-synth-strided:
             - args: ""
               accel-sim-mem: 1G
+        - snake-synth-strided-dep:
+            - args: ""
+              accel-sim-mem: 1G
         - snake-synth-random:
             - args: ""
               accel-sim-mem: 1G

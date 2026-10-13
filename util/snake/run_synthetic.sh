@@ -2,9 +2,11 @@
 # Snake synthetic-trace check (docs/snake/SNAKE_PLAN.md section 9.2).
 #
 # Writes the synthetic traces (gen_synthetic_traces.py), runs them with
-# Snake on and its debug log (QV100-SASS-SYNTH_LRR1-SNAKE-SNAKE_DBG), in the
-# default lane mode 1 and in lane mode 0 (-SNAKE_LANE0, OQ-17), on a frozen
-# copy of the current build, and checks each (check_synthetic.py).
+# Snake on and its debug log on a frozen copy of the current build, and
+# checks each config (check_synthetic.py).  Configs: $CFGS (comma-separated);
+# the default is the S3a set, Snake-DT (no decoupling or throttling) with the
+# line footprint and with the exact footprint (-SNAKE_FP1, OQ-9).  The S2
+# gates used QV100-SASS-SYNTH_LRR1-SNAKE-SNAKE_DBG and -SNAKE_LANE0.
 #
 # usage: run_synthetic.sh <stage> [parallel]
 # Run from a clean tree after a clean build; the script refuses otherwise.
@@ -14,8 +16,8 @@ STAGE=${1:?usage: run_synthetic.sh <stage> [parallel]}
 PAR=${2:-3}
 ACCELSIM=$(cd "$(dirname "$0")/../.." && pwd)
 OUT=$ACCELSIM/sim_run_snake_synth/$STAGE
-CFG=QV100-SASS-SYNTH_LRR1-SNAKE-SNAKE_DBG
-CFGS="$CFG,$CFG-SNAKE_LANE0"
+CFG=QV100-SASS-SYNTH_LRR1-SNAKE_DT-SNAKE_DBG
+CFGS=${CFGS:-$CFG,$CFG-SNAKE_FP1}
 
 cd "$ACCELSIM"
 for r in . gpu-simulator/gpgpu-sim; do
