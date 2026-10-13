@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Check Snake's training on the synthetic traces (SNAKE_PLAN.md S2 gate).
 
-    check_synthetic.py <runs dir> <trace root>
+    check_synthetic.py <runs dir> <trace root> [<config>]
 
 <runs dir>/<app>/NO_ARGS/<config>/sim.out must come from a run with
--snake_enable 1 -snake_debug_trace 1; <trace root>/manifest.json is written by
+-snake_enable 1 -snake_debug_trace 1 (any config directory if <config> is
+not given; there must then be exactly one); <trace root>/manifest.json is written by
 gen_synthetic_traces.py.  Exit status 0 only if every check passes.
 
 T1/T2 are compared by state name (OQ-5).  The figure prints codes for them
@@ -88,8 +89,8 @@ def find_tail(state, **want):
             if all(e[k] == v for k, v in want.items())]
 
 
-def sim_out(runs, app):
-    hits = glob.glob(os.path.join(runs, app, "NO_ARGS", "*", "sim.out"))
+def sim_out(runs, app, cfg):
+    hits = glob.glob(os.path.join(runs, app, "NO_ARGS", cfg, "sim.out"))
     if len(hits) != 1:
         failures.append("%s: expected one sim.out, found %d" % (app, len(hits)))
         return None
@@ -188,8 +189,14 @@ def check_random(path, p):
     st = stats(path)
     for k in ("t1_promotions", "interwarp_trained", "t2_trained"):
         check(st.get("snake_" + k, -1) == 0, "%s == 0: %s" % (k, st.get("snake_" + k)))
-    check(st.get("snake_warp_excluded_lane_stride", 0) > 0,
-          "scattered-lane loads excluded: %s" % st.get("snake_warp_excluded_lane_stride"))
+    # Lane mode 0 excludes every scattered P3 load (unequal strides); lane
+    # mode 1 learns P3's pattern from its first warp and excludes the others
+    # (OQ-17).
+    excl = (st.get("snake_warp_excluded_lane_stride", 0) +
+            st.get("snake_warp_excluded_shape", 0))
+    check(excl > 0, "scattered-lane loads excluded: lane-stride %s, shape %s"
+          % (st.get("snake_warp_excluded_lane_stride"),
+             st.get("snake_warp_excluded_shape")))
     print("  info  loads_observed=%s tail_lookups=%s tail_allocs=%s "
           "tail_evictions=%s" % tuple(st.get("snake_" + k) for k in
                                       ("loads_observed", "tail_lookups",
@@ -198,11 +205,12 @@ def check_random(path, p):
 
 def main():
     runs, root = sys.argv[1], sys.argv[2]
+    cfg = sys.argv[3] if len(sys.argv) > 3 else "*"
     man = json.load(open(os.path.join(root, "manifest.json")))
     for app, fn in (("snake-synth-fig15", check_fig15),
                     ("snake-synth-strided", check_strided),
                     ("snake-synth-random", check_random)):
-        path = sim_out(runs, app)
+        path = sim_out(runs, app, cfg)
         if path:
             fn(path, man[app])
     print("\n%s: %d failure(s)" % ("PASS" if not failures else "FAIL", len(failures)))

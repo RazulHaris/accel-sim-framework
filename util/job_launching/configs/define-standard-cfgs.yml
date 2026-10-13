@@ -231,6 +231,11 @@ SNAKE_ISO:
 SNAKE_DBG:
     extra_params: "-snake_debug_trace 1"
 
+# Paper-literal lane check (section 3.4): train only on warps whose active
+# lanes are equally spaced, instead of the default lane-pattern match (OQ-17).
+SNAKE_LANE0:
+    extra_params: "-snake_lane_mode 0"
+
 # One LRR scheduler per SM without the sub-core model, so the warps of a CTA
 # issue strictly round robin, as in the paper's Fig. 15 example.
 SYNTH_LRR1:

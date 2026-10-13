@@ -33,7 +33,7 @@ T1/T2 encodings: '00' = not trained (§3.2), '10' = promoted (§3.2). Fig. 15 al
 
 ### 3.1 Training (per global load; §3.1, Fig. 12 p.733, §3.4 p.735)
 Inputs: warp w, PC p, address vector of active lanes.
-0. **Warp address.** If all lanes have an equal inter-lane stride, keep a = first active lane's address. Otherwise the warp is excluded from Snake for this load (§3.4).
+0. **Warp address.** If all lanes have an equal inter-lane stride, keep a = first active lane's address. Otherwise the warp is excluded from Snake for this load (§3.4). The implementation keeps this rule as lane mode 0; its default (lane mode 1) is a deviation → **OQ-17**.
 1. **Head.** Read the previous (q, b) for w. Write Head[w] ← (p, a). Send (w, q, p, s = a − b) to Tail (Fig. 12 step 1).
 2. **Tail match.** Create a new entry (q, p, s) if (i) no PC1 == q (step 2), or (ii) PC1 matches but no PC2 == p (step 3), or (iii) PC1 and PC2 match but the stride differs (step 3). Then set bit w in the warpID vector (step 4).
 3. **Inter-thread promotion.** When ≥3 warps hold the same (PC1, PC2, s), set T1 → '10' promoted (§3.4). Prefetching starts from this state (§3.2).
@@ -62,7 +62,7 @@ On a load (w, p, a):
    - Issue only if the line is not already in L1 (§3.2 ¶1).
    - "When a PC_ld is encountered for the first time … issues prefetching requests for all future warps as soon as … promoted" (§3.2 ¶4).
 5. **Verification during prefetching.** Compare each warp's actual PC2 and stride against the Tail entry. On mismatch, clear bit w. If **more than 2 warps** are removed, T1 → '00' and the entry returns to detection (§3.2 ¶5).
-6. **Prefetch footprint.** The paper predicts only a warp base address. Expanding it to the whole warp's lines (base + lane·lane_stride) is not stated → **OQ-9**.
+6. **Prefetch footprint.** The paper predicts only a warp base address. Expanding it to the whole warp's lines (base + lane·lane_stride) is not stated → **OQ-9** (lane mode 0). In the default lane mode 1 the target PC's stored lane pattern is replayed instead → **OQ-17**.
 7. **Latency.** 2 cycles for the detection and prefetch pipeline (§5.5 Latency). Training takes 3 cycles on average, at most 10 (§3.2 ¶7).
 
 ### 3.3 Chain length (§3.2, Fig. 13)
@@ -187,7 +187,20 @@ Format: interpretation (confidence).
   - Granularity: sector accesses at L1D. (medium)
 - **OQ-15 50%-until-trained.** Applies per kernel launch, from launch until the first Tail entry reaches promoted. (low)
 - **OQ-16 Energy.** AccelWattch is not modified. Add Snake energy offline: accesses × 6.4 pJ + 6 mW × time, from Snake stats. (medium)
-- **OQ-17 Divergent and partial warps.** Lanes = active lanes only. The "equal stride" check tolerates a single active lane, with stride 0. (medium)
+- **OQ-17 Which warps Snake uses (lane check).** **Decided 2026-10-13: a deliberate deviation from §3.4, selected by `-snake_lane_mode`.**
+  - **Why.** §3.4 says the inter-lane strides of a warp are "consistently equal" and excludes warps where they are not. In the local Rodinia traces this is false for 2-D thread blocks. With 16×16 blocks each warp covers two 16-lane rows, e.g. backprop PC 0x180 has lane deltas 4 ×15, 8, 4 ×15. The paper-literal rule excluded 100% of hotspot's and 99.1% of backprop's eligible loads in the S2 gate, so neither trains, yet the paper reports ~88% and ~83% coverage for them (Fig. 16).
+  - **Lane mode 0 (paper-literal, §3.4).** Lanes = active lanes only. A load is used only if every active lane is the same distance per lane index from its predecessor; a single active lane has stride 0. `-snake_require_equal_lane_stride 0` disables the check (mode 0 only). The footprint follows OQ-9.
+  - **Lane mode 1 (shape match, default).**
+    - Each load PC stores a lane-offset pattern: the active mask of the first warp that executes the PC and each active lane's address minus the first active lane's address.
+    - A later warp is used (trained on, and a trigger for predictions) only if each of its active lanes is active in the pattern and lies at the pattern's offset from the warp's first active lane. Otherwise the load is excluded and counted in `warp_excluded_shape`, and the warp's Head register is invalidated, as in mode 0.
+    - A partial or divergent warp can therefore match a full-warp pattern. Its first active lane must sit at offset 0 of the pattern, so the first active lane's address, which training uses as the warp address in both modes, is the pattern's base address.
+    - The pattern of the first warp is kept even if it is a partial warp; a later warp with lanes outside it is excluded.
+    - **S3:** each prediction is expanded into sectors by replaying the target PC's stored offsets from the predicted base address; this replaces the OQ-9 lane-stride expansion in mode 1. A prediction whose target PC has no stored pattern (row evicted) is dropped and counted.
+  - **Storage (extra, per PC).** The pattern lives in the PC's Head row (OQ-1b; 32 rows, LRU by PC) and is lost with the row (`head_row_evictions`); the next warp to execute the PC stores a new one.
+    - Per row: 1 valid bit + 32-bit lane mask + 31 offsets (the first active lane's offset is 0 by definition).
+    - At 32-bit offsets (OQ-2 widths) that is 1 + 32 + 31×32 = 1,025 bits ≈ 128 B per PC, i.e. ≈ 4.0 KB per SM for 32 rows. That is 5.3× the paper's Head + Tail storage of 768 B (Tab. 3), for a total of ≈ 4.8 KB per SM.
+    - The simulator stores 64-bit offsets. Narrower or delta-encoded offsets would shrink this but are not evaluated.
+  - (decided)
 - **OQ-18 Scheduler.** Paper uses GTO. The base QV100 config says `-gpgpu_scheduler lrr` (`configs/tested-cfgs/SM7_QV100/gpgpusim.config:134`, despite the "Greedy then oldest" comment at :133). Run both baseline and Snake with GTO via a `GTO` extra-param config. (high)
 
 OQ-19…OQ-25 (simulator-specific questions and the decisions on clock, Rodinia version and competitors) are in [SNAKE_PLAN §12](SNAKE_PLAN.md).

@@ -5,7 +5,8 @@
 
 Prints, per run, the final (cumulative) snake_* training counters: Tail hit
 rate, allocations/evictions, T1 promotions/trained/demotions, T2 and
-inter-warp training, lane-stride exclusions, predictions per eligible load,
+inter-warp training, lane exclusions (OQ-17: unequal lane strides in lane
+mode 0, lane pattern mismatch in lane mode 1), predictions per eligible load,
 and the inter-thread chain-depth histogram.
 """
 import os
@@ -24,7 +25,7 @@ def stats(path):
 def main():
     for path in sys.argv[1:]:
         s = stats(path)
-        name = "/".join(path.split(os.sep)[-4:-2])
+        name = "/".join(path.split(os.sep)[-4:-1])  # app/args/config
         if not s:
             print("%s: no Snake block" % name)
             continue
@@ -33,8 +34,12 @@ def main():
         last = max([d for d, v in enumerate(hist) if v] or [0])
         preds = s["pred_inter_thread"] + s["pred_inter_warp"] + s["pred_intra_warp"] + s["pred_promotion"]
         print("%s" % name)
-        print("  eligible loads %d (of %d memory instructions), lane-stride excluded %.1f%%"
-              % (loads, s["hook_observe"], 100.0 * s["warp_excluded_lane_stride"] / max(loads, 1)))
+        excl = s["warp_excluded_lane_stride"] + s.get("warp_excluded_shape", 0)
+        print("  eligible loads %d (of %d memory instructions), excluded %.1f%% "
+              "(lane-stride %d, shape %d); patterns learned %d, Head row evictions %d"
+              % (loads, s["hook_observe"], 100.0 * excl / max(loads, 1),
+                 s["warp_excluded_lane_stride"], s.get("warp_excluded_shape", 0),
+                 s.get("shape_learned", 0), s.get("head_row_evictions", 0)))
         print("  tail hits/lookups %d/%d = %.1f%%; allocs %d (cond1/2/3 %d/%d/%d, fills %d); evictions %d"
               % (s["tail_hits"], s["tail_lookups"], 100.0 * s["tail_hits"] / max(s["tail_lookups"], 1),
                  s["tail_allocs"], s["tail_alloc_cond1"], s["tail_alloc_cond2"], s["tail_alloc_cond3"],

@@ -21,7 +21,8 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
 |---|---|---|---|---|
 | S0 analysis docs (this file and its companions) | done | `84251a0` | `6c3cf4ff` (base) | — |
 | S1 infrastructure | done | `d49e1f3` | `e0d23397` | off-regression PASS on 5 workloads (backprop, hotspot ×2, nw, histo): ref == off, off == on, raw cycles/insn/L1/DRAM equal (`sim_run_snake_regress/S1`, 2026-10-08) |
-| S2 training only | done | `snake: S2 training` (hash recorded with S3) | `ace5cc70` | gate result recorded with S3 |
+| S2 training only | done | `e4030cd` | `ace5cc70` | synthetic PASS (Fig. 15 Head/Tail and predictions exact; strided trained; random none promoted; `sim_run_snake_synth/S2`). Off-regression PASS on 6 workloads (+ srad_v1): ref == off, off == on, raw stats equal (`sim_run_snake_regress/S2`). Plausibility: srad_v1 plausible (Tail hits 74%, 2331 promotions); hotspot / backprop **not**: the §3.4 lane check excluded 100% / 99.1% of their loads → OQ-17 decision |
+| S2b lane-pattern mode (OQ-17) | done | `snake: S2b lane-pattern mode` (hash recorded with S3) | same commit title | gate result recorded with S3 |
 | S1 docs + regression tooling | done | `b930d75` | — | — |
 | S3a/S3b issue (intra + inter-thread, then inter-warp) | pending | | | |
 | S4 throttling + decoupling | pending | | | |
@@ -36,7 +37,8 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
 - **T1 trained (OQ-5).** A promoted entry becomes trained on repetition, which is either a warp already in the vector matching the same (PC1, PC2, stride) again, or a warp returning to PC1 through the entry while its intra-warp stride is computed (Fig. 15c).
 - **Promotion-time predictions (§3.2 ¶4, OQ-27).** When an entry is promoted, every other warp whose Head register is at PC1 and whose bit is not set gets a prediction for PC2 (Fig. 15b, 1800).
 - **Demotion (§3.2, OQ-28).** It applies to promoted or trained entries; when more than `demote_removed` warps have been removed, T1 drops to untrained and the warpID vector is cleared.
-- **Lane-stride exclusion (OQ-17).** An excluded load also invalidates its warp's Head register, so no stride is computed across it.
+- **Lane exclusion (OQ-17).** An excluded load also invalidates its warp's Head register, so no stride is computed across it.
+- **Lane-pattern mode (OQ-17, decided 2026-10-13, S2b).** `-snake_lane_mode 1` (default) replaces the §3.4 equal-stride rule with a per-PC lane-offset pattern learned from the first warp at that PC and stored in the PC's Head row. `-snake_lane_mode 0` (config token `SNAKE_LANE0`) is the paper-literal rule. Details and the extra storage are in SPEC OQ-17.
 - **Inter-warp stride (OQ-6).** It is stored in every Tail entry with that PC1, or in a new PC1-only entry (Fig. 15a), and the latest consistent stride replaces an older one. `snake_interwarp_min_warps` is limited to 2 or 3, because the Head keeps two warps per PC. With `-snake_head_two_warps 0`, the candidates are the per-warp registers whose last load was this PC, nearest warp ID first.
 - **Intra-warp stride (OQ-26).** It is stored in every Tail entry with that PC1. The chain walk follows the most recently used qualifying entry at each step.
 - **Inter-warp prediction targets (OQ-8).** These are the next `interwarp_degree` warps above the current one that were initialised in the same CTA slot. Warp liveness is not tracked in S2.
@@ -54,10 +56,10 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
 ## 1. Design summary
 - **One object per SM.** Each `ldst_unit` owns a `snake_prefetcher`. The object is only constructed when `-snake_enable 1`; with Snake off, every hook is a null-pointer check.
 - **Training.** `ldst_unit::issue` passes (warp slot, CTA slot, PC, active mask, lane addresses, stream) to `snake_prefetcher::observe()` for L1-cached global loads. Observe does:
-  - the lane-stride check (§3.4)
+  - the lane check (OQ-17): lane-pattern match by default, or the §3.4 equal-stride rule in lane mode 0
   - the Head update, which produces (q, p, s)
   - Tail match / allocate / bit-set, plus inter-thread, intra-warp and inter-warp training (§3.1)
-  - prediction (§3.2): it computes target warp base addresses and expands each into sector addresses with the triggering access's lane stride and active-lane count (OQ-9)
+  - prediction (§3.2): it computes target warp base addresses and expands each into sector addresses by replaying the target PC's stored lane pattern (lane mode 1, OQ-17), or with the triggering access's lane stride and active-lane count (lane mode 0, OQ-9)
   - results go into a bounded **prefetch queue**, tagged ready at `now + snake_latency` (2 cycles, §5.5)
 - **Issue.** `ldst_unit::cycle` calls `snake->tick()` after `L1_latency_queue_cycle()`, so demand requests win the port. Tick:
   - pops ≤`snake_issue_width` ready entries, unless throttled
@@ -187,7 +189,8 @@ Budget with Snake on: **≤15% slower** simulation. With Snake off: **within run
 | `snake_max_chain_depth` | uint | 3 | OQ-7 |
 | `snake_interwarp_degree` | uint | 4 | OQ-8 |
 | `snake_enable_inter_thread` / `_inter_warp` / `_intra_warp` | bool | 1/1/1 | s-Snake = 1/0/0 (§4) |
-| `snake_require_equal_lane_stride` | bool | 1 | §3.4 |
+| `snake_lane_mode` | uint | 1 | 0 = §3.4 equal lane strides; 1 = per-PC lane pattern (deviation, OQ-17) |
+| `snake_require_equal_lane_stride` | bool | 1 | §3.4; lane mode 0 only |
 | `snake_latency` | uint | 2 | §5.5 |
 | `snake_queue_size` | uint | 32 | OQ-4 |
 | `snake_issue_width` | uint | 1 | OQ-4 |
@@ -220,7 +223,7 @@ The ablations come from these flags:
   - `accuracy_paper = timely/demand`
   - `accuracy_std = (timely+late)/issued`
   - `timeliness = timely/(timely+late)`
-- **Tables:** `head_updates`, `tail_lookups`, `tail_hits`, `tail_allocs`, `tail_evictions`, `t1_promotions`, `t1_demotions`, `t2_trained`, `interwarp_trained`, `warp_excluded_lane_stride`, `chain_depth_hist[0..D]`.
+- **Tables:** `head_updates`, `tail_lookups`, `tail_hits`, `tail_allocs`, `tail_evictions`, `t1_promotions`, `t1_demotions`, `t2_trained`, `interwarp_trained`, `warp_excluded_lane_stride` (mode 0), `warp_excluded_shape`, `shape_learned`, `head_row_evictions` (mode 1, OQ-17), `chain_depth_hist[0..D]`.
 - **Per mode:** {inter_thread, inter_warp, intra_warp} × {generated, issued, useful, late, unused}.
 - **Throttle:** `throttle_space_events`, `throttle_bw_events`, `throttled_cycles`, `bw_util_hist`, and an optional time series (`snake_throttle_log` every N cycles).
 - **Decoupling:** `region_flips`, `bulk_frees`, `bulk_free_l1_side` / `_pf_side`, `l1_quota_victims`.
@@ -250,7 +253,8 @@ The ablations come from these flags:
    - (a) a strided loop (fixed inter-thread chain + intra stride) → S2: the chain, inter-warp and intra-warp strides are trained; S3: coverage ≥90%
    - (b) random gather → S2: nothing is promoted; S4: throttled, little issue
    - (c) the Fig. 15 example (PCs 0x520/0x540, W1..W4 = warps 1..4 of a 5-warp CTA whose warp 0 only exits, one LRR scheduler) → exact Head/Tail state after each phase and predictions 1300 / 1800 / {2600, 2700, 2800, 3000}. This is a direct check of the SPEC.
-   - Runner: `util/snake/run_synthetic.sh <stage>` (traces from `gen_synthetic_traces.py`, app suite `snake-synth`, config `QV100-SASS-SYNTH_LRR1-SNAKE-SNAKE_DBG`, checks in `check_synthetic.py`). Training statistics of real runs: `util/snake/training_report.py <sim.out>...`.
+   - Runner: `util/snake/run_synthetic.sh <stage>` (traces from `gen_synthetic_traces.py`, app suite `snake-synth`, config `QV100-SASS-SYNTH_LRR1-SNAKE-SNAKE_DBG` in lane mode 1 and with `-SNAKE_LANE0` in lane mode 0; every check must pass in both; checks in `check_synthetic.py`).
+   - Training plausibility on real traces: `util/snake/training_runs.sh <stage>` runs hotspot, backprop and srad_v1 in both lane modes into `sim_run_snake_train/<stage>` and prints `util/snake/training_report.py`. `util/snake/load_pcs.py <kernel-N.traceg>...` counts each kernel's load PCs and (PC1, PC2) edges against the 10 Tail entries.
    - Fallback: NVBit-trace small CUDA kernels on the local RTX 2080 Ti.
 3. **Paper comparison.**
    - Run the suite on `QV100 + PAPER_V100 + 1B_INSN`, baseline vs. SNAKE (and the DT/T/s-Snake ablations).
@@ -258,7 +262,7 @@ The ablations come from these flags:
    - Every gap >10 pp is explained against the VERSION_DIFF list and the OQs.
 
 ## 10. Experiment layout
-- **Run dirs (new only; verified that none exist today):** `sim_run_baseline`, `sim_run_snake`, `sim_run_snake_dt`, `sim_run_snake_t`, `sim_run_ssnake`, `sim_run_snake_sweep_{tail,evict,throttle}`, `sim_run_snake_regress`, `sim_run_baseline_1132`, `sim_run_snake_1132`.
+- **Run dirs (new only; verified that none exist today):** `sim_run_baseline`, `sim_run_snake`, `sim_run_snake_dt`, `sim_run_snake_t`, `sim_run_ssnake`, `sim_run_snake_sweep_{tail,evict,throttle}`, `sim_run_snake_regress`, `sim_run_snake_synth`, `sim_run_snake_train`, `sim_run_baseline_1132`, `sim_run_snake_1132`.
 - **Never** touch existing `sim_run_*`, `hw_run/` or traces. The traces are read-only `-T` inputs.
 
 ```bash
@@ -314,4 +318,5 @@ All of OQ-1…OQ-18 from SPEC §7 carry over, plus:
 - **OQ-25 Competitor prefetchers** (INTRA, INTER, MTA, CTA-Aware, Tree). **Decided:** none for now; Snake ablations only.
 - **OQ-26 Intra-warp stride storage (S2).** The stride belongs to the load PC and is kept in every Tail entry with that PC1. The non-consecutive case walks this warp's chain through the most recently used qualifying entry at each step. (medium)
 - **OQ-27 Promotion-time targets (S2).** "Issues prefetching requests for all future warps as soon as … promoted" (§3.2) is read as: every other warp whose Head register is at PC1 and whose warpID bit is not yet set. (medium)
+- **OQ-17 Lane check.** **Decided 2026-10-13:** lane-pattern match (`snake_lane_mode 1`) by default, a deviation from §3.4; the paper-literal rule stays as mode 0. See SPEC OQ-17.
 - **OQ-28 Demotion (S2).** A demoted entry (more than `demote_removed` warps removed, §3.2) also clears its warpID vector, so it is re-trained from scratch instead of being re-promoted by the remaining bits. (low)

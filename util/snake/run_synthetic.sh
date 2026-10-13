@@ -2,8 +2,9 @@
 # Snake synthetic-trace check (docs/snake/SNAKE_PLAN.md section 9.2).
 #
 # Writes the synthetic traces (gen_synthetic_traces.py), runs them with
-# Snake on and its debug log (QV100-SASS-SYNTH_LRR1-SNAKE-SNAKE_DBG) on a
-# frozen copy of the current build, and checks them (check_synthetic.py).
+# Snake on and its debug log (QV100-SASS-SYNTH_LRR1-SNAKE-SNAKE_DBG), in the
+# default lane mode 1 and in lane mode 0 (-SNAKE_LANE0, OQ-17), on a frozen
+# copy of the current build, and checks each (check_synthetic.py).
 #
 # usage: run_synthetic.sh <stage> [parallel]
 # Run from a clean tree after a clean build; the script refuses otherwise.
@@ -14,6 +15,7 @@ PAR=${2:-3}
 ACCELSIM=$(cd "$(dirname "$0")/../.." && pwd)
 OUT=$ACCELSIM/sim_run_snake_synth/$STAGE
 CFG=QV100-SASS-SYNTH_LRR1-SNAKE-SNAKE_DBG
+CFGS="$CFG,$CFG-SNAKE_LANE0"
 
 cd "$ACCELSIM"
 for r in . gpu-simulator/gpgpu-sim; do
@@ -31,7 +33,7 @@ echo "build: $tags" | tee "$OUT/BUILDS.txt"
 [ "$(echo "$tags" | grep -o '_modified_0\.0' | wc -l)" = 2 ] || { echo "ABORT: build is not _modified_0.0 twice"; exit 1; }
 
 python3 -I util/snake/gen_synthetic_traces.py "$OUT/traces"
-python3 util/job_launching/run_simulations.py -B snake-synth -C $CFG -T "$OUT/traces" \
+python3 util/job_launching/run_simulations.py -B snake-synth -C "$CFGS" -T "$OUT/traces" \
     -N snake_synth_$STAGE -r "$OUT/runs" -n >/dev/null
 
 run_job() {  # <job dir>
@@ -42,4 +44,9 @@ run_job() {  # <job dir>
 export -f run_job; export OUT
 find "$OUT/runs" -name justrun.sh -printf '%h\n' | xargs -P "$PAR" -I{} bash -c 'run_job "{}"'
 
-python3 -I util/snake/check_synthetic.py "$OUT/runs" "$OUT/traces"
+status=0
+for c in ${CFGS//,/ }; do
+  echo "######## $c"
+  python3 -I util/snake/check_synthetic.py "$OUT/runs" "$OUT/traces" "$c" || status=1
+done
+exit $status
