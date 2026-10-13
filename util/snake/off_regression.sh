@@ -2,8 +2,10 @@
 # Snake off-regression (docs/snake/SNAKE_PLAN.md section 9.1).
 #
 # Runs the same jobs with
-#   ref : the clean-base reference build   ($SNAKE_BIN_REF, default
-#         /home/razul/snake/bin_ref: accel-sim.out + lib/libcudart.so)
+#   ref : the reference build               ($SNAKE_BIN_REF, default
+#         /home/razul/snake/bin_ref_v2: accel-sim.out + lib/libcudart.so,
+#         the clean bases plus the pre-756ed33 trace-parser fix; until
+#         2026-10-13 it was bin_ref, now bin_ref_paperera, without the fix)
 #   off : the current build, Snake off      (default -snake_enable 0)
 #   on  : the current build, -snake_enable 1
 # and requires ref == off byte for byte after removing only volatile lines
@@ -28,7 +30,7 @@ STAGE=${1:?usage: off_regression.sh <stage> [insn_cap] [parallel]}
 INSN_CAP=${2:-100M}
 PAR=${3:-12}
 ACCELSIM=$(cd "$(dirname "$0")/../.." && pwd)
-REF=${SNAKE_BIN_REF:-/home/razul/snake/bin_ref}
+REF=${SNAKE_BIN_REF:-/home/razul/snake/bin_ref_v2}
 NORM=$ACCELSIM/util/snake/regress_norm.py   # what is removed and why: see that file
 OUT=$ACCELSIM/sim_run_snake_regress/$STAGE
 CFG=QV100-SASS-PAPER_V100-${INSN_CAP}_INSN
