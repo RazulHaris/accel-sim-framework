@@ -44,6 +44,37 @@ So the authors overrode them, or 1530 MHz is the nominal V100 boost clock quoted
 | Configs | QV100 clock 1447 → 1132 (`8ca01b07`); `perfect_inst_const_cache` 0 → 1; `max_concurrent_kernel` 8 → 128; `trace.config` int/sp latency 4,2 → 2,2. Unchanged: L2 `S:32:128:24`, `l1_latency 20`, `l2_rop_latency 160`, `dram_latency 100`, DRAM timing | **Yes.** Clock ratio moves the benefit of hiding latency |
 | Stats / AccelWattch | AccelWattch is equivalent (`84c6cf45` ≈ `d90d7ab0`). The base excludes MSHR_HIT from L1D TOTAL_ACCESS (`a374b330`, `gpu-cache.cc:945`). Output is per stream (`38b4df56`) | **No for the model. Maybe** for comparing stats and energy |
 
+## Pre-756ed33 traces (trace-parser fix, 2026-10-13)
+- **What.** Before tracer commit `756ed33` (2020-11-06, "Resolve wrong address generation issue in tracer"; in v1.3.0 and the base), the tracer printed `active & predicate` as a line's mask but compressed the addresses over `active` alone (`475a282` `tracer_tool.cu:529`/`:548`). The parser decodes with the printed mask, so lanes of predicated memory instructions get wrong addresses. Details and a reproduction: [upstream_issue.md](upstream_issue.md) (draft, not posted).
+- **Our traces are affected.** All local Rodinia 3.1 / Parboil traces are tracer version 3, nvbit 1.4, dated 2020-08-09, i.e. pre-`756ed33`.
+- **The paper era had it too.** v1.2.0 (`ed6d38b`) has both the pre-fix tracer (`tracer_tool.cu:549`, `mask(ma->active_mask)`) and the same parser. So the paper's Accel-Sim v1.2.0 simulations very likely decoded these lines the same wrong way, whatever traces they used: pre-fix traces were mis-decoded by the parser, and traces the authors made with the v1.2.0 tracer were written wrongly. Upstream `dev` (`0db0445`) still does not handle pre-fix traces.
+- **Fix (accel-sim `fe8f37e`, separate from Snake).** For tracer version ≤ 3, a base+delta line with a partial mask and exactly 31 deltas (a fully active warp) is decoded over all 32 lanes, keeping the printed lanes. This is exact; every other line is parsed as before. Each run prints `accel-sim: pre-756ed33 base+delta trace lines re-decoded = N`.
+- **References.** `bin_ref_v2` (clean bases + `fe8f37e` cherry-picked as `6c28685` on local branch `snake-ref-v2`) is the regression reference from 2026-10-13. The old clean-base build is kept as `bin_ref_paperera`, with the paper-era decoding.
+- **Scan of the 7 suite apps** (`util/snake/scan_legacy_traces.py`, all inputs and kernels). "Harmless" lines carry extra deltas but decode correctly: either the mask is empty, or lane 0 is the only printed lane. All remaining base+stride gap lines are shared-memory `LDS`/`STS` in hotspot (masks like `fffcfffc`). They cannot be fixed from the trace, because the first active lane is unknown, and they affect bank-conflict timing only, not global/L1 traffic.
+
+| app | kernel files | memory lines (global) | base+delta fixed | base+delta harmless / wrong | list_all mismatch | base+stride gap: global / other | still mis-decoded after fix |
+|---|---|---|---|---|---|---|---|
+| backprop-rodinia-3.1 | 2 | 1048583 (425991) | 172032 (16.41%) | 0 / 0 | 0 | 0 / 0 | 0 (0.00%) |
+| hotspot-rodinia-3.1 | 2 | 1452024 (202960) | 5314 (0.37%) | 0 / 0 | 0 | 0 / 114168 | 114168 (7.86%) |
+| srad_v1-rodinia-3.1 | 502 | 49597440 (22440040) | 4000 (0.01%) | 200 / 0 | 0 | 0 / 0 | 0 (0.00%) |
+| lud-rodinia-3.1 | 140 | 2706808 (423144) | 0 (0.00%) | 144 / 0 | 0 | 0 / 0 | 0 (0.00%) |
+| nw-rodinia-3.1 | 255 | 3686400 (573440) | 0 (0.00%) | 16384 / 0 | 0 | 0 / 0 | 0 (0.00%) |
+| parboil-histo | 80 | 6565000 (5215880) | 0 (0.00%) | 0 / 0 | 0 | 0 / 0 | 0 (0.00%) |
+| parboil-mri-q | 4 | 21792 (21792) | 0 (0.00%) | 0 / 0 | 0 | 0 / 0 | 0 (0.00%) |
+
+- **Effect on the baseline,** `bin_ref_paperera` → `bin_ref_v2` (`util/snake/compare_bins.sh paperera_vs_v2`, `sim_run_snake_refcmp/paperera_vs_v2`, 2026-10-13):
+
+| workload (100M insn, PAPER_V100) | cycles | L1D read hits | L1D read misses | DRAM reads | lines re-decoded |
+|---|---|---|---|---|---|
+| backprop 65536 | 26,170 → 25,995 (−0.67%) | 28,310 → 6,830 (−75.9%) | 49,798 → 44,172 (−11.3%) | 150,193 → 142,210 (−5.3%) | 172,032 |
+| hotspot 512 | 19,697 → 19,686 (−0.06%) | 888 → 322 (−63.7%) | 88,430 → 85,256 (−3.6%) | 67,612 → 65,536 (−3.1%) | 1,673 |
+| hotspot 1024 | 19,458 → 19,451 (−0.04%) | 1,414 → 761 (−46.2%) | 103,174 → 102,283 (−0.9%) | 79,422 → 78,173 (−1.6%) | 1,004 |
+| srad_v1 | 60,676 (0) | 130,839 (0) | 54,659 (0) | 28,984 (0) | 40 |
+| nw 2048_10 | 1,515,147 (0) | 11,233 (0) | 460,910 (0) | 519,049 (0) | 0 |
+| parboil histo | 141,169 (0) | 991,495 (0) | 147,213 (0) | 172,871 (0) | 0 |
+
+  Cycles change by less than 0.7%. The wild lane addresses produced spurious L1 hits, because many warps hit the same wild line, and spurious misses. Without them, backprop's L1D read hits fall by 76% and its DRAM reads by 5%. hotspot 1024 also simulated a few more instructions within the 100M cap (100,001,955 → 100,006,626).
+
 ## Why my numbers may differ from the paper even with a correct implementation
 1. **Scheduler:** the base uses lrr; the paper used GTO. **Mitigation:** run with `-gpgpu_scheduler gto`.
 2. **Clock:** the base runs QV100 at 1132 MHz; the paper states 1530 MHz.
@@ -60,6 +91,7 @@ So the authors overrode them, or 1530 MHz is the nominal V100 boost clock quoted
    - LIB is the paper's largest gain (+60%, Fig. 18), and LPS (~6%) and MUM (~11%) also contribute.
    - **The 7-app geometric mean is therefore expected to be below the paper's 17%**, even with a faithful implementation. Compare per benchmark, not only the average.
 8. **Stat accounting:** MSHR_HIT handling and the per-stream format.
+8a. **Trace decoding:** the paper's v1.2.0 simulations most likely mis-decoded predicated memory instructions (see "Pre-756ed33 traces" above). We fix the base+delta case, which changes the L1 hit and DRAM counts of backprop and hotspot.
 9. **Unknown implementation details:** everything in OQ-1…OQ-18. This is probably the largest source of difference.
 
 ## Recommendation: implement on my current base (`3016c65` / `6c3cf4ff`)

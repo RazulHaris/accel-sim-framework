@@ -22,13 +22,17 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
 | S0 analysis docs (this file and its companions) | done | `84251a0` | `6c3cf4ff` (base) | — |
 | S1 infrastructure | done | `d49e1f3` | `e0d23397` | off-regression PASS on 5 workloads (backprop, hotspot ×2, nw, histo): ref == off, off == on, raw cycles/insn/L1/DRAM equal (`sim_run_snake_regress/S1`, 2026-10-08) |
 | S2 training only | done | `e4030cd` | `ace5cc70` | synthetic PASS (Fig. 15 Head/Tail and predictions exact; strided trained; random none promoted; `sim_run_snake_synth/S2`). Off-regression PASS on 6 workloads (+ srad_v1): ref == off, off == on, raw stats equal (`sim_run_snake_regress/S2`). Plausibility: srad_v1 plausible (Tail hits 74%, 2331 promotions); hotspot / backprop **not**: the §3.4 lane check excluded 100% / 99.1% of their loads → OQ-17 decision |
-| S2b lane-pattern mode (OQ-17) | done | `snake: S2b lane-pattern mode` (hash recorded with S3) | same commit title | gate result recorded with S3 |
+| S2b lane-pattern mode (OQ-17) | done | `5b4f096` | `b9cdc46a` | synthetic PASS in lane modes 1 and 0 (`sim_run_snake_synth/S2b`); off-regression PASS on 6 workloads (`sim_run_snake_regress/S2b`); plausibility in `sim_run_snake_train/S2b`: hotspot trains in mode 1 (Tail hits 99%, 80/85 promotions; mode 0 excludes 100%); backprop blocked by mis-decoded trace addresses → trace-parser fix |
+| Trace-parser fix, pre-756ed33 traces (not Snake code) | done | `fe8f37e` | — | exact on the 172,032 / 5,314 / 4,000 affected backprop / hotspot / srad_v1 lines; effect on the baseline in VERSION_DIFF "Pre-756ed33 traces" |
+| Regression reference `bin_ref_v2` + legacy-trace tooling | done | `bed3a2b` | — | synthetic PASS in both lane modes (`sim_run_snake_synth/S2c`); off-regression against `bin_ref_v2` PASS on 6 workloads (`sim_run_snake_regress/S2c`); plausibility re-run in `sim_run_snake_train/S2c` (S2 notes) |
+| Docs: trace-parser fix, upstream issue draft | done | `snake: docs for the trace-parser fix` (hash recorded with S3) | — | — |
 | S1 docs + regression tooling | done | `b930d75` | — | — |
 | S3a/S3b issue (intra + inter-thread, then inter-warp) | pending | | | |
 | S4 throttling + decoupling | pending | | | |
 | S5 sweeps + cleanup | pending | | | |
 
-**Reference build for the off-regression (§9.1):** `/home/razul/snake/bin_ref/` holds `accel-sim.out` plus `lib/libcudart.so`, which contains the gpgpu-sim model. It was built 2026-10-08 from the clean bases (`accelsim-commit-3016c65_modified_0.0`, `gpgpu-sim_git-commit-6c3cf4ff_modified_0.0`); checksums are in `BUILD_INFO.txt`.
+**Reference build for the off-regression (§9.1), from 2026-10-13:** `/home/razul/snake/bin_ref_v2/` = the clean bases plus the trace-parser fix `fe8f37e` only (cherry-picked as `6c28685` on local branch `snake-ref-v2`; `accelsim-commit-6c28685_modified_0.0`, `gpgpu-sim_git-commit-6c3cf4ff_modified_0.0`; built in the worktree `/home/razul/snake/src_ref_v2`; checksums in its `BUILD_INFO.txt`). See VERSION_DIFF "Pre-756ed33 traces".
+**Previous reference, kept as `/home/razul/snake/bin_ref_paperera/` (was `bin_ref`, used for S1–S2b):** it holds `accel-sim.out` plus `lib/libcudart.so`, which contains the gpgpu-sim model. It was built 2026-10-08 from the clean bases (`accelsim-commit-3016c65_modified_0.0`, `gpgpu-sim_git-commit-6c3cf4ff_modified_0.0`); checksums are in `BUILD_INFO.txt`.
 
 **Rule:** a stage's own commit cannot contain its hash or the result of a gate run on it. Both are recorded in the next stage's commit.
 
@@ -38,6 +42,10 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
 - **Promotion-time predictions (§3.2 ¶4, OQ-27).** When an entry is promoted, every other warp whose Head register is at PC1 and whose bit is not set gets a prediction for PC2 (Fig. 15b, 1800).
 - **Demotion (§3.2, OQ-28).** It applies to promoted or trained entries; when more than `demote_removed` warps have been removed, T1 drops to untrained and the warpID vector is cleared.
 - **Lane exclusion (OQ-17).** An excluded load also invalidates its warp's Head register, so no stride is computed across it.
+- **Plausibility after the trace-parser fix** (`sim_run_snake_train/S2c`, lane mode 1 / lane mode 0):
+  - **hotspot 512 / 1024:** excluded 5.7% / 2.4% in mode 1 (100% in mode 0); Tail hits 99.2% / 99.3%; promotions 80 / 88; chain depth 0: 66% / 63%, 1: 34% / 37%. Plausible.
+  - **backprop:** excluded 0% in mode 1 (100% in mode 0: the two printed lanes of PC 0x90 are 16 lanes and 4 B apart, a non-integer lane stride); 0 promotions, chain depth 0 only. Not a defect. The 0x90 → 0x180 stride grows by 128 B per warp (0x90 advances 8 B per warp, 0x180 136 B; `hw_run/.../backprop-rodinia-3.1/65536/traces/kernel-1.traceg`), so no two warps share an inter-thread stride. Each lookup allocates a condition-3 entry (31,989 of 32,069), and the 10-entry Tail thrashes (35,281 evictions). Only the per-PC inter-warp strides are learnable (2.33 inter-warp predictions per load). The paper's backprop gain is also small (~1% IPC, Fig. 18).
+  - **srad_v1:** unchanged by the fix (no mis-decoded lines in the simulated kernels); mode 1 excludes 3.9%, mode 0 2.6%; Tail hits 74%; 2207 / 2331 promotions; chain depth 0: 90%, 1: 10%, 2: 0.3%, 3: 0.1%. The `reduce` launches have 26 and 40 load PCs against 10 Tail entries (`util/snake/load_pcs.py`), the `srad` kernel 9.
 - **Lane-pattern mode (OQ-17, decided 2026-10-13, S2b).** `-snake_lane_mode 1` (default) replaces the §3.4 equal-stride rule with a per-PC lane-offset pattern learned from the first warp at that PC and stored in the PC's Head row. `-snake_lane_mode 0` (config token `SNAKE_LANE0`) is the paper-literal rule. Details and the extra storage are in SPEC OQ-17.
 - **Inter-warp stride (OQ-6).** It is stored in every Tail entry with that PC1, or in a new PC1-only entry (Fig. 15a), and the latest consistent stride replaces an older one. `snake_interwarp_min_warps` is limited to 2 or 3, because the Head keeps two warps per PC. With `-snake_head_two_warps 0`, the candidates are the per-warp registers whose last load was this PC, nearest warp ID first.
 - **Intra-warp stride (OQ-26).** It is stored in every Tail entry with that PC1. The chain walk follows the most recently used qualifying entry at each step.
@@ -246,7 +254,7 @@ The ablations come from these flags:
 
 ## 9. Verification
 1. **Off-regression.**
-   - Reference: `/home/razul/snake/bin_ref/` (`accel-sim.out` + `lib/libcudart.so`, built from the clean bases; outside the repo). Run it with `LD_LIBRARY_PATH=/home/razul/snake/bin_ref/lib`.
+   - Reference: `/home/razul/snake/bin_ref_v2/` (`accel-sim.out` + `lib/libcudart.so`, the clean bases plus the trace-parser fix; outside the repo; `SNAKE_BIN_REF` overrides). Run it with `LD_LIBRARY_PATH=/home/razul/snake/bin_ref_v2/lib`. Until 2026-10-13 (S1–S2b) the reference was the clean-base build, now `bin_ref_paperera`. `util/snake/compare_bins.sh <name> <build a> <build b>` compares two builds on these workloads (`sim_run_snake_refcmp/<name>`).
    - Runner: `util/snake/off_regression.sh <stage>` (from S1 docs commit on). It refuses a dirty tree or a branch other than `Snake`, freezes the build into `sim_run_snake_regress/<stage>/bin_new`, and runs ref / off / on on rodinia-3.1 backprop, hotspot (2 inputs), nw, srad_v1 (added in S2) and parboil histo, `QV100-SASS-PAPER_V100-100M_INSN`.
    - Compare after `util/snake/regress_norm.py`, which removes only volatile lines (wall-clock, simulation rate, build strings, binary paths) and the added `-snake_*` option-dump lines, and makes two heap-address-dependent debug dumps comparable (pending-request list sorted, MSHR pointers masked). **Must be identical.** The final cycles, instructions, L1D read hits/misses and DRAM reads are also compared raw. Repeat at every stage.
 2. **Microbenchmarks.** `gen_synthetic_traces.py` writes accel-sim text traces (no GPU needed):
@@ -262,7 +270,7 @@ The ablations come from these flags:
    - Every gap >10 pp is explained against the VERSION_DIFF list and the OQs.
 
 ## 10. Experiment layout
-- **Run dirs (new only; verified that none exist today):** `sim_run_baseline`, `sim_run_snake`, `sim_run_snake_dt`, `sim_run_snake_t`, `sim_run_ssnake`, `sim_run_snake_sweep_{tail,evict,throttle}`, `sim_run_snake_regress`, `sim_run_snake_synth`, `sim_run_snake_train`, `sim_run_baseline_1132`, `sim_run_snake_1132`.
+- **Run dirs (new only; verified that none exist today):** `sim_run_baseline`, `sim_run_snake`, `sim_run_snake_dt`, `sim_run_snake_t`, `sim_run_ssnake`, `sim_run_snake_sweep_{tail,evict,throttle}`, `sim_run_snake_regress`, `sim_run_snake_synth`, `sim_run_snake_train`, `sim_run_snake_refcmp`, `sim_run_baseline_1132`, `sim_run_snake_1132`.
 - **Never** touch existing `sim_run_*`, `hw_run/` or traces. The traces are read-only `-T` inputs.
 
 ```bash
