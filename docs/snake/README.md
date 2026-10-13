@@ -29,12 +29,9 @@ Updated with every stage. A stage's gate results and its own commit hashes go in
 | Trace-parser fix for pre-756ed33 traces (not Snake code) | `fe8f37e` | — | exact on all affected base+delta lines |
 | Reference `bin_ref_v2` + legacy-trace tooling | `bed3a2b` | — | synthetic PASS; off-regression vs `bin_ref_v2` PASS |
 | Docs for the parser fix, upstream issue draft | `61c0dc1` | — | — |
+| S2c stateless lane-run filter (OQ-17), `snake_footprint` setting (OQ-9), `interwarp_trained_pcs` | `293aaaa` | `bc22d0dd` | synthetic PASS (both modes); off-regression vs `bin_ref_v2` PASS (6 workloads); hotspot and backprop excluded 0% (all L = 16); hotspot 80/88 promotions; backprop 0 promotions by design (SPEC §8), 2 inter-warp PCs; srad_v1 2,337 promotions, 16 inter-warp PCs |
 
-**In progress — S2c (2026-10-13):**
-- Stateless lane-run filter (`snake_lane_mode 1`, L ∈ {32, 16, 8, 4}). It replaces the S2b per-PC pattern.
-- `snake_footprint` setting (0 = line, the default; 1 = exact lane descriptor per Tail entry).
-- New `snake_interwarp_trained_pcs` stat.
-- Implemented in `snake: S2c lane-run filter + footprint setting` in both repos. Hashes and gate results follow in `snake: S2c gate results`.
+**In progress:** nothing. S2c's gate results were recorded in `snake: S2c gate results`.
 
 **Reference builds:** both are in `/home/razul/snake/`, with checksums in their `BUILD_INFO.txt`.
 - `bin_ref_v2` is the regression reference from 2026-10-13: the clean base plus the parser fix.
