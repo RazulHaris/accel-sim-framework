@@ -35,6 +35,13 @@ Updated with every stage. A stage's gate results and its own commit hashes go in
 | Miss-queue / memory-path config check vs Tab. 1 and Figs. 3–5 (no runs, cached bin_ref_v2 outputs) | `50570b0` (`util/snake/missq_check.py`) | — | Config matches Tab. 1 except L1 latency 20 (28) and L2 ROP latency 160 (212). MISS_QUEUE_FULL causes 71–100% of reservation fails; fail rates and icnt utilisation are below Figs. 3–4. Miss queue stays 16. `results/missq_config_check.md` |
 | S3c diagnosis, stats only (prediction funnel, timing, miss queue) | `59e5bee`, `b7cae56` | `02a9d7de` | synthetic PASS and identical to S3b3; Snake-on runs identical to S3b_fp1; off-regression PASS (6); 9 diagnosis runs. Tables: `results/S3c_diag.md` |
 | S3d promoted strides for all warps (`-snake_promoted_all_warps 1`, OQ-32) + funnel by source | `976937f` | `97119f36` | synthetic PASS (Fig. 15 unchanged, trace (d) 90.8%); off-regression PASS (6); 10 runs (defaults and `SNAKE_IWC0`), all invariants OK. Tables: `results/S3d.md` |
+| S3e paper defaults: inter-warp chain depth 0 (OQ-29), deeper chain steps need bit + trained (OQ-32); PAPER_LAT config | `20e968f`, `131a513` | `53bbfd25` | synthetic PASS (trace (d) gated under `SNAKE_IWC3` 90.8%; default 86.0% reported); off-regression PASS (6); 5 runs, all invariants OK; PAPER_LAT measured L2 hit 212.0 / L1 33.0. Tables: `results/S3e.md` |
+
+**S3e findings (results/S3e.md, SPEC §8):**
+- Within noise of S3d (b). IPC: hotspot +0.04%, lud −0.19%, histo −1.6%, mri-q +0.12%, srad_v1 +0.19%; coverage_pred 31–91%.
+- Wrong share by source unchanged (lud: promotion 53%; others: inter-warp 96–99.5%). lud demotions 6,898.
+- Our L2 hit is 173 cycles vs 212 in the paper; PAPER_LAT reproduces 212 for the final evaluation.
+- Discrepancies with the paper (lud, histo, mri-q) and intra-warp's rarity are in SPEC §8.
 
 **S3d findings (results/S3d.md §5):**
 - Every load at a promoted PC1 now gets an inter-thread prediction. 33–57% of loads still get none, all at PCs without a promoted entry.
@@ -75,4 +82,4 @@ Updated with every stage. A stage's gate results and its own commit hashes go in
 - `sim_run_snake_gate/<stage>`: real-workload gate runs, from S3a on.
 - `sim_run_snake_refcache/bin_ref_v2`: cached baseline outputs.
 
-**Next:** decide on the S3d findings (inter-warp chain depth default, lud's wrong predictions, lateness of own-warp prefetches), then S4, throttling and decoupling (SNAKE_PLAN §8).
+**Next:** S4, throttling and decoupling (SNAKE_PLAN §8). Open for the final evaluation: the PAPER_LAT L1 knob (28 as specified, or 23 to measure 28).

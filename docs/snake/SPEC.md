@@ -242,6 +242,7 @@ Format: interpretation (confidence).
   - From a + k·S_iw, up to `-snake_interwarp_chain_depth` (default 3) steps are followed, each through a Tail entry for the current PC with a PC2 and T1 ≥ promoted (promotion is what lets a stride serve warps other than those that trained it, §3.2). The target's warpID bit is not required; an entry that holds it is preferred, otherwise the most recently used. Each step's address uses the entry's PC2 lane descriptor (OQ-9).
   - Order of one load's predictions (§3.4: inter-thread before inter-warp): promotion-time predictions, the warp's own chain, all inter-warp target addresses, then each target's chain, then intra-warp.
   - **Fig. 15 (c).** The figure's queue holds 2600, 2700, 2800 and 3000. Its 520→540 entry is trained with all four warp bits, so with the chain W2..W4 also get 3100, 3200 and 3300. `-snake_interwarp_chain_depth 0` (config `SNAKE_IWC0`) is the paper-literal behaviour and reproduces the figure exactly; the synthetic gate checks both.
+  - **S3e (2026-10-14): the default is 0, the paper's.** Our extension was net-negative in S3d: IPC was lower with depth 3 than with 0 on all five apps tested, and on lud it added 280k predicted sectors, 83% of them wrong (results/S3d.md). The option stays (config `SNAKE_IWC3`). The synthetic trace (d) ≥ 90% gate runs with `SNAKE_IWC3`; the default gives 86.0%, reported only.
   - (decided)
 - **OQ-30 Tail eviction weight for an inter-warp stride (S3b, decided 2026-10-14).** The eviction score is popcount(warpID vector) + `-snake_interwarp_weight` (default 3) if the entry holds a trained inter-warp stride; the lowest score in the LRU group (OQ-3) is evicted, ties to the older. `popcount` uses the same score; `lru` ignores it.
   - **Why.** Training an inter-warp stride already needed 3 agreeing warps (§3.1), but an inter-warp-only entry (Fig. 15a) has no warpID bits, so the plain popcount rule evicted it first (S3a: backprop evicted 32,137 such entries with 0.9 bits on average; SPEC §8).
@@ -259,8 +260,8 @@ Format: interpretation (confidence).
     - §3.2 (p.733, SIMT paragraph): "if a consistent stride is detected across multiple threads, it is highly probable that all threads observe the same stride … Snake confirms the stride's consistency across multiple warps before promoting it to issue prefetch requests for future warps".
     - §3.2 (p.734, verification): "each warp's PC2 and Inter-thread stride are compared with their corresponding values in the Tail table. If they do not match, that particular warp is removed from the warpID vector. If more than two warps are removed … 'not-trained'".
   - **Implementation** (`-snake_promoted_all_warps 1`, default):
-    - A load at PC1 by a warp without the entry's warpID bit also gets the inter-thread chain. The entry with the warp's bit is preferred, otherwise the most recently used one.
-    - Each step keeps its T1 requirement: promoted at depth 1, trained deeper (OQ-5, OQ-7).
+    - A load at PC1 by a warp without the entry's warpID bit also gets the **first** inter-thread step from a promoted entry. The entry with the warp's bit is preferred, otherwise the most recently used one.
+    - **S3e:** every deeper step needs the warp's bit set and the entry trained. §3.2 (Fig. 13 paragraph, p.734): Snake "revisits the Tail table to locate an entry that possesses the same PC1 value as the current entry's PC2 value, while the corresponding bit in warpID vector is set and the status is trained". In S3d the bit requirement was lifted at every step; S3e changes the results only within noise (results/S3e.md).
     - The warp's next load verifies the first step. A match sets its bit through training (Fig. 12 step 4). A mismatch counts as a removed warp of that entry (`warps_removed`, `nobit_verify_fail`), with demotion after more than `-snake_demote_removed` removals (OQ-28).
     - A Head invalidated in between (OQ-17, OQ-20) leaves the step unverified (`nobit_verify_lost`).
     - The one-shot promotion-time predictions (OQ-27) are unchanged.
@@ -272,6 +273,22 @@ Format: interpretation (confidence).
 OQ-19…OQ-28 (simulator-specific questions, the decisions on clock, Rodinia version and competitors, and the S2 training interpretations) are in [SNAKE_PLAN §12](SNAKE_PLAN.md). OQ-29…OQ-31 (S3b) are above.
 
 ## 8. Design limitations observed in our traces
+### Discrepancies with the paper (S3e, exact footprint, 100M; paper values from §5 above)
+
+| app | paper coverage / accuracy / IPC | ours coverage_pred / coverage_paper / accuracy_paper / IPC | likely cause |
+|---|---|---|---|
+| lud | ~91% / ~82% / +18% | 83.6% / 45.7% / 3.3% / −0.2% | Predictions are plentiful but half are wrong: 53% of the wrong ones come from promotion, i.e. inter-thread strides shared by 3 warps but not by the others (59% of no-bit verifications fail, ~6,900 demotions). Correct ones arrive late (inter-thread ~20 cycles ahead, S3c). |
+| histo | ~97% / ~96% / +33% | 30.9% / 25.0% / 8.8% / −1.6% | The prediction gap is real: 37% of predicted sectors match no demand, and inter-warp gives 96% of the wrong ones. The data-dependent histogram accesses have no fixed strides for most loads (33% of loads get no inter-thread prediction), and the baseline L1 hit rate is 63%. |
+| mri-q | ~72% / ~60% / +4% | 90.8% / 9.5% / 0.0% / +0.1% | Predicted, but not issued in time: 54–82% of each source's predictions are still queued or dropped when the demand comes. Demand keeps the 16-entry miss queue near full (drained 1 per cycle), so the 8-slot reserve blocks prefetches (S3c, results/missq_config_check.md). |
+
+- **Common factors** (VERSION_DIFF):
+  - Our GPU hides less latency: the L2 hit is 173 cycles vs the paper's 212, and the reservation-fail rates and L1↔L2 traffic are lower than in Figs. 3–4.
+  - Decoupling and throttling are still off (S4).
+  - We run 100M instructions instead of 1B, and the inputs may differ (OQ-13).
+- **Intra-warp barely fires** in all five apps: 0–45 intra-warp predictions and 0–181 trained T2 strides per run, against 5k–155k observed loads (results/S3e.md).
+  - This is consistent with the paper's §2: "memory-bound GPGPU applications replace deep loops with parallel programming", hence "using intra-warp stride opportunities is unlikely".
+
+### Observations per stage
 - **S3d (results/S3d.md).**
   - With OQ-32 every load at a promoted PC1 gets an inter-thread prediction. 33–57% of loads still get none, all at PCs without a promoted entry.
   - Own-warp inter-thread prefetches are rarely wrong but almost never timely. Timely prefetches come from the inter-warp source and its chain (OQ-29), which also produce most of the wrong ones.

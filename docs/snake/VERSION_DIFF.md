@@ -87,6 +87,11 @@ Details: [results/missq_config_check.md](results/missq_config_check.md).
   - One shared miss queue per L1D, fed by up to 4 banks per cycle and drained at most one request per cycle.
   - The drain blocks only if the SM's request-network input buffer holds 512 packets (`-network_mode 2` ignores the packet size). It never did in our outputs.
   - A rejected demand stays at its bank's latency-queue head, retried every cycle, and blocks that bank.
+- **Summary (S3e, 2026-10-14).**
+  - The config matches Table 1 except the L1 latency knob (20 vs 28) and the L2 ROP latency (160 vs 212).
+  - Our reservation-fail rates and L1↔L2 traffic are lower than in the paper's Figs. 3–4.
+  - So the paper's GPU had more latency to hide, a likely contributor to the gap in Snake's gains.
+  - **Measured** (l2_lat microbenchmark, sim_run_snake_calib): our config gives an L2 hit of 173 cycles and an L1 hit of 25. Config **`PAPER_LAT`** (`-gpgpu_l1_latency 28`, `-gpgpu_l2_rop_latency 199`) gives 212 and 33. It is defined and calibrated for the final evaluation only (results/S3e.md §3).
 - **Figs. 3–5 from the bin_ref_v2 baselines.**
   - Miss-queue congestion causes 71–100% of reservation fails, as the paper says. The fail rates are lower (GMEAN 0.17 without nw vs 0.26; hotspot 0.08 vs 0.57, srad_v1 0.22 vs 0.71); backprop matches.
   - L1↔L2 utilisation is lower (10.5% vs 33% average, peak = 64 packets/cycle).

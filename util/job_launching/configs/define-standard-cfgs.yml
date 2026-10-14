@@ -197,6 +197,14 @@ PAPER_V100:
     extra_params: "-gpgpu_scheduler gto
     \n-gpgpu_clock_domains 1530.0:1530.0:1530.0:850.0"
 
+# Paper Table 1 latencies, for the final evaluation only (S3e): L1 knob 28
+# (Table 1), and the L2 ROP latency calibrated with the l2_lat microbenchmark
+# so that the measured L2 hit latency is 212 cycles (173 with the stock 160;
+# sim_run_snake_calib, docs/snake/results/S3e.md §3).  Use with PAPER_V100.
+PAPER_LAT:
+    extra_params: "-gpgpu_l1_latency 28
+    \n-gpgpu_l2_rop_latency 199"
+
 # Clock-sensitivity variant (OQ-23): GTO at QV100's calibrated 1132 MHz.
 PAPER_V100_1132:
     extra_params: "-gpgpu_scheduler gto"

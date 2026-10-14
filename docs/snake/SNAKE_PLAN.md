@@ -33,6 +33,7 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
 | S3c diagnosis (stats only): prediction funnel, timing, miss queue | done | `59e5bee`, `b7cae56` (results: `snake: S3c diagnosis results`) | `02a9d7de` | synthetic PASS, outputs identical to S3b3 apart from volatile lines; Snake-on runs identical to S3b_fp1 (cycles, issued, matched); off-regression vs `bin_ref_v2` PASS on 6 (`sim_run_snake_regress/S3c`); 9 diagnosis runs (`sim_run_snake_gate/S3c`). Tables: `docs/snake/results/S3c_diag.md` |
 | Miss-queue / memory-path config check (no runs) | done | `50570b0` | — | config matches Tab. 1 except L1 latency 20 (28) and L2 ROP latency 160 (212); MISS_QUEUE_FULL causes 71–100% of reservation fails; miss queue stays 16. `docs/snake/results/missq_config_check.md` |
 | S3d promoted strides for all warps (OQ-32) + funnel by source | done | `976937f` (results: `snake: S3d results`) | `97119f36` | synthetic PASS (Fig. 15 unchanged, trace (d) 90.8%); off-regression vs `bin_ref_v2` PASS on 6 (`sim_run_snake_regress/S3d`); 10 runs (`sim_run_snake_gate/S3d`), all invariants OK. `docs/snake/results/S3d.md` |
+| S3e paper defaults: inter-warp chain depth 0, deeper chain steps need bit + trained; PAPER_LAT config | done | `20e968f`, `131a513` (results: `snake: S3e results`) | `53bbfd25` | synthetic PASS (Fig. 15 exact; trace (d) 90.8% under `SNAKE_IWC3`, default 86.0% reported); off-regression vs `bin_ref_v2` PASS on 6 (`sim_run_snake_regress/S3e`); 5 runs (`sim_run_snake_gate/S3e`), all invariants OK; PAPER_LAT calibrated to L2 hit 212.0 (`sim_run_snake_calib`). `docs/snake/results/S3e.md` |
 | S4 throttling + decoupling | pending | | | |
 | S5 sweeps + cleanup | pending | | | |
 
@@ -204,8 +205,8 @@ Budget with Snake on: **≤15% slower** simulation. With Snake off: **within run
 | `snake_demote_removed` | uint | 2 | ">2 removed → untrained" (§3.2) |
 | `snake_max_chain_depth` | uint | 3 | OQ-7 |
 | `snake_interwarp_degree` | uint | 4 | OQ-8 |
-| `snake_interwarp_chain_depth` | uint | 3 | promoted inter-thread steps from each inter-warp target; 0 = paper Fig. 15 (OQ-29, S3b) |
-| `snake_promoted_all_warps` | bool | 1 | a promoted inter-thread stride predicts for warps without their warpID bit, verified at their next load; 0 = S3c (OQ-32, S3d) |
+| `snake_interwarp_chain_depth` | uint | 0 | promoted inter-thread steps from each inter-warp target; 0 = paper Fig. 15 (OQ-29; S3b–S3d default 3, S3e default 0) |
+| `snake_promoted_all_warps` | bool | 1 | the first inter-thread step uses a promoted stride also for warps without their warpID bit, verified at their next load; deeper steps need the bit and a trained entry (S3e); 0 = S3c (OQ-32) |
 | `snake_interwarp_weight` | uint | 3 | Tail eviction score added for a trained inter-warp stride; 0 = paper popcount (OQ-30, S3b) |
 | `snake_enable_inter_thread` / `_inter_warp` / `_intra_warp` | bool | 1/1/1 | s-Snake = 1/0/0 (§4) |
 | `snake_lane_mode` | uint | 1 | 0 = §3.4 equal lane strides; 1 = stateless run filter, L ∈ {32,16,8,4} (deviation, OQ-17) |
@@ -349,6 +350,21 @@ The ablations come from these flags:
   - **Deviations:**
     - The bit requirement is lifted at every chain step, not only the first. Only the first step is verified, as only it is the next load.
     - The per-source funnel uses the record's first prediction (S3c used the latest).
+- **S3e Paper defaults for the chain walk; PAPER_LAT** (2026-10-14).
+  - `-snake_interwarp_chain_depth` defaults to 0 (OQ-29).
+  - With `-snake_promoted_all_warps 1`, only the first chain step may use an entry without the warp's bit; deeper steps need the bit and a trained entry (OQ-32, §3.2 Fig. 13 paragraph).
+  - VERSION_DIFF records the miss-queue check. Config `PAPER_LAT` (L1 knob 28, L2 ROP 199 → measured L2 hit 212.0) is for the final evaluation.
+  - SPEC §8 lists the discrepancies with the paper.
+  - **Done 2026-10-14.** gpgpu-sim `53bbfd25`; accel-sim `20e968f` (`SNAKE_IWC3`, synthetic Fig. 15 extra config), `131a513` (trace (d) gate on `SNAKE_IWC3`).
+  - **Gates:**
+    - Synthetic (`sim_run_snake_synth/S3e`, 9 + 1 runs): PASS.
+    - Off-regression PASS on 6 (`sim_run_snake_regress/S3e`).
+    - Runs (`sim_run_snake_gate/S3e`, 5): all invariants OK.
+  - **Results** (results/S3e.md): within noise of S3d (b); lud demotions 6,898 (S3d 6,829–6,879).
+  - **Deviations (each agreed 2026-10-14):**
+    - Trace (d) fell to 86.0% with the paper default, so its ≥ 90% gate now runs under `SNAKE_IWC3` and the default is reported only; one extra synthetic run.
+    - PAPER_LAT was calibrated with the l2_lat microbenchmark: 3 calibration runs in the new run dir `sim_run_snake_calib`, one of which aborted on an sm_75 trace (opcode map) and was redone with an sm_70 build.
+    - The L1 knob is 28 as specified, which measures 33; knob 23 would measure 28.
 - **S5 Sweep hooks + cleanup.** Sweep configs for Tail {10, 20, 40, ∞}, eviction policy, throttle {25…300} (Figs. 20, 22, 23), the prefetch queue size and issue width (OQ-4, added in S3a; defaults 32 lines and 1 line per cycle stay until then) and `snake_missq_reserve` (OQ-11, default 8); `compare_paper.py`; docs updated.
   - *Done when:* the sweep run dirs generate and the plots/tables are reproducible.
 
@@ -374,7 +390,7 @@ The ablations come from these flags:
    - Every gap >10 pp is explained against the VERSION_DIFF list and the OQs.
 
 ## 10. Experiment layout
-- **Run dirs (new only; verified that none exist today):** `sim_run_baseline`, `sim_run_snake`, `sim_run_snake_dt`, `sim_run_snake_t`, `sim_run_ssnake`, `sim_run_snake_sweep_{tail,evict,throttle}`, `sim_run_snake_regress`, `sim_run_snake_synth`, `sim_run_snake_train`, `sim_run_snake_refcmp`, `sim_run_snake_gate`, `sim_run_snake_refcache`, `sim_run_baseline_1132`, `sim_run_snake_1132`.
+- **Run dirs (new only; verified that none exist today):** `sim_run_baseline`, `sim_run_snake`, `sim_run_snake_dt`, `sim_run_snake_t`, `sim_run_ssnake`, `sim_run_snake_sweep_{tail,evict,throttle}`, `sim_run_snake_regress`, `sim_run_snake_synth`, `sim_run_snake_train`, `sim_run_snake_refcmp`, `sim_run_snake_gate`, `sim_run_snake_refcache`, `sim_run_baseline_1132`, `sim_run_snake_1132`, `sim_run_snake_calib` (S3e latency calibration).
 - **Never** touch existing `sim_run_*`, `hw_run/` or traces. The traces are read-only `-T` inputs.
 
 ```bash
