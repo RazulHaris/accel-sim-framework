@@ -260,6 +260,11 @@ SNAKE_IWC0:
 SNAKE_IWW0:
     extra_params: "-snake_interwarp_weight 0"
 
+# S3c behaviour (OQ-32): a promoted inter-thread stride predicts only for
+# warps holding their warpID bit (plus the one-shot promotion predictions).
+SNAKE_PAW0:
+    extra_params: "-snake_promoted_all_warps 0"
+
 # One LRR scheduler per SM without the sub-core model, so the warps of a CTA
 # issue strictly round robin, as in the paper's Fig. 15 example.
 SYNTH_LRR1:
