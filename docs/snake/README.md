@@ -32,8 +32,19 @@ Updated with every stage. A stage's gate results and its own commit hashes go in
 | S2c stateless lane-run filter (OQ-17), `snake_footprint` setting (OQ-9), `interwarp_trained_pcs` | `293aaaa` | `bc22d0dd` | synthetic PASS (both modes); off-regression vs `bin_ref_v2` PASS (6 workloads); hotspot and backprop excluded 0% (all L = 16); hotspot 80/88 promotions; backprop 0 promotions by design (SPEC §8), 2 inter-warp PCs; srad_v1 2,337 promotions, 16 inter-warp PCs |
 | S3a prefetch issue (inter-thread chain/promotion + intra-warp; Snake-DT) | `1221702`, `9dc2631`, `d836622` | `028012de`, `5c6f2267`, `2d50a9aa` | synthetic PASS (trace (d) coverage_paper 93.0%); 7 apps × 2 footprints finish, no warp woken, invariant OK; off-regression PASS; `snake_missq_reserve` 8 from the lud sweep. Tables: `results/S3a_gate.md` |
 | S3b inter-warp issue (degree 4, resident warps of the CTA), combined lookahead (OQ-29), inter-warp eviction weight (OQ-30), own-warp queue priority (OQ-31) | `bf1fc2f`, `a708e99` | `298c5f94`, `000798a7`, `f1e4f856` | synthetic PASS (Fig. 15 (c) exact with `SNAKE_IWC0`, + {3100, 3200, 3300} by default; trace (d) 90.8%); 9 workloads line + 7 exact finish, no warp woken, invariant OK; off-regression PASS (6). Tables: `results/S3b_gate.md` |
-| Miss-queue / memory-path config check vs Tab. 1 and Figs. 3–5 (no runs, cached bin_ref_v2 outputs) | this commit (`util/snake/missq_check.py`) | — | Config matches Tab. 1 except L1 latency 20 (28) and L2 ROP latency 160 (212). MISS_QUEUE_FULL causes 71–100% of reservation fails; fail rates and icnt utilisation are below Figs. 3–4. Miss queue stays 16. `results/missq_config_check.md` |
+| Miss-queue / memory-path config check vs Tab. 1 and Figs. 3–5 (no runs, cached bin_ref_v2 outputs) | `50570b0` (`util/snake/missq_check.py`) | — | Config matches Tab. 1 except L1 latency 20 (28) and L2 ROP latency 160 (212). MISS_QUEUE_FULL causes 71–100% of reservation fails; fail rates and icnt utilisation are below Figs. 3–4. Miss queue stays 16. `results/missq_config_check.md` |
 | S3c diagnosis, stats only (prediction funnel, timing, miss queue) | `59e5bee`, `b7cae56` | `02a9d7de` | synthetic PASS and identical to S3b3; Snake-on runs identical to S3b_fp1; off-regression PASS (6); 9 diagnosis runs. Tables: `results/S3c_diag.md` |
+| S3d promoted strides for all warps (`-snake_promoted_all_warps 1`, OQ-32) + funnel by source | `976937f` | `97119f36` | synthetic PASS (Fig. 15 unchanged, trace (d) 90.8%); off-regression PASS (6); 10 runs (defaults and `SNAKE_IWC0`), all invariants OK. Tables: `results/S3d.md` |
+
+**S3d findings (results/S3d.md §5):**
+- Every load at a promoted PC1 now gets an inter-thread prediction. 33–57% of loads still get none, all at PCs without a promoted entry.
+- (a) vs S3c:
+  - coverage_pred: hotspot 87.8 → 90.4, srad_v1 80.6 → 85.9, mri-q 87.1 → 93.8.
+  - coverage_paper: hotspot 71.1 → 75.7.
+  - IPC: within ±0.5%, except histo −2.6%.
+- lud: 59% of no-bit verifications fail; T1 demotions 490 → 6,879.
+- Most wrong predictions: promotion and inter-warp chain (lud), inter-warp and its chain (histo, mri-q). Most timely: inter-warp and its chain. Own-warp inter-thread prefetches are almost never timely.
+- Chain depth 0 gives slightly better IPC than 3 on all five apps.
 
 **S3c findings (results/S3c_diag.md §10):**
 - Issued prefetches are almost never evicted before use. Losses come from late issue (7–29% of predicted sectors), from never issuing in time (still queued, queue full, miss-queue reserve: 7–58%) and from wrong predictions (10–54%, lud highest).
@@ -64,4 +75,4 @@ Updated with every stage. A stage's gate results and its own commit hashes go in
 - `sim_run_snake_gate/<stage>`: real-workload gate runs, from S3a on.
 - `sim_run_snake_refcache/bin_ref_v2`: cached baseline outputs.
 
-**Next:** decide on the S3c findings (lateness, miss-queue drain, promotion coverage), then S4, throttling and decoupling (SNAKE_PLAN §8).
+**Next:** decide on the S3d findings (inter-warp chain depth default, lud's wrong predictions, lateness of own-warp prefetches), then S4, throttling and decoupling (SNAKE_PLAN §8).

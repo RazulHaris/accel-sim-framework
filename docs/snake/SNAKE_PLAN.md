@@ -31,6 +31,8 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
 | S3a issue: inter-thread (chain, promotion) + intra-warp, Snake-DT | done | `1221702`, `9dc2631`, `d836622` (gate results: `snake: S3a gate results`) | `028012de`, `5c6f2267`, `2d50a9aa` | synthetic PASS (trace (d) coverage_paper 93.0% exact and line; (b) 0 issued; (a) saturates without deadlock; Fig. 15 PASS); 7 apps × 2 footprints: all finish, `pf_woken_warps` 0, invariant OK; off-regression vs `bin_ref_v2` PASS (`sim_run_snake_regress/S3a`, `S3a2`); miss-queue reserve 8 from the lud sweep. Tables: `docs/snake/results/S3a_gate.md` |
 | S3b inter-warp issue + combined lookahead + inter-warp eviction weight | done | `bf1fc2f`, `a708e99` (gate results: `snake: S3b gate results`) | `298c5f94`, `000798a7`, `f1e4f856` | synthetic PASS (`sim_run_snake_synth/S3b3`): Fig. 15 (c) exact with `SNAKE_IWC0` and figure + {3100, 3200, 3300} by default; trace (d) 90.8%. 7 apps × line (9 runs) and 7 exact (> 5 pp coverage change): all finish, `pf_woken_warps` 0, invariant OK; off-regression vs `bin_ref_v2` PASS on 6 (`sim_run_snake_regress/S3b`). Tables: `docs/snake/results/S3b_gate.md` |
 | S3c diagnosis (stats only): prediction funnel, timing, miss queue | done | `59e5bee`, `b7cae56` (results: `snake: S3c diagnosis results`) | `02a9d7de` | synthetic PASS, outputs identical to S3b3 apart from volatile lines; Snake-on runs identical to S3b_fp1 (cycles, issued, matched); off-regression vs `bin_ref_v2` PASS on 6 (`sim_run_snake_regress/S3c`); 9 diagnosis runs (`sim_run_snake_gate/S3c`). Tables: `docs/snake/results/S3c_diag.md` |
+| Miss-queue / memory-path config check (no runs) | done | `50570b0` | — | config matches Tab. 1 except L1 latency 20 (28) and L2 ROP latency 160 (212); MISS_QUEUE_FULL causes 71–100% of reservation fails; miss queue stays 16. `docs/snake/results/missq_config_check.md` |
+| S3d promoted strides for all warps (OQ-32) + funnel by source | done | `976937f` (results: `snake: S3d results`) | `97119f36` | synthetic PASS (Fig. 15 unchanged, trace (d) 90.8%); off-regression vs `bin_ref_v2` PASS on 6 (`sim_run_snake_regress/S3d`); 10 runs (`sim_run_snake_gate/S3d`), all invariants OK. `docs/snake/results/S3d.md` |
 | S4 throttling + decoupling | pending | | | |
 | S5 sweeps + cleanup | pending | | | |
 
@@ -203,6 +205,7 @@ Budget with Snake on: **≤15% slower** simulation. With Snake off: **within run
 | `snake_max_chain_depth` | uint | 3 | OQ-7 |
 | `snake_interwarp_degree` | uint | 4 | OQ-8 |
 | `snake_interwarp_chain_depth` | uint | 3 | promoted inter-thread steps from each inter-warp target; 0 = paper Fig. 15 (OQ-29, S3b) |
+| `snake_promoted_all_warps` | bool | 1 | a promoted inter-thread stride predicts for warps without their warpID bit, verified at their next load; 0 = S3c (OQ-32, S3d) |
 | `snake_interwarp_weight` | uint | 3 | Tail eviction score added for a trained inter-warp stride; 0 = paper popcount (OQ-30, S3b) |
 | `snake_enable_inter_thread` / `_inter_warp` / `_intra_warp` | bool | 1/1/1 | s-Snake = 1/0/0 (§4) |
 | `snake_lane_mode` | uint | 1 | 0 = §3.4 equal lane strides; 1 = stateless run filter, L ∈ {32,16,8,4} (deviation, OQ-17) |
@@ -242,6 +245,9 @@ The ablations come from these flags:
   - `funnel_<mode>_<class>` for the prediction funnel, with `funnel_invariant` (SPEC OQ-14).
   - `snake_dist_*` / `snake_hist_*` distributions: `pred_to_issue_<mode>`, `queue_wait`, `port_wait`, `lead_issue_<mode>_{late,timely,evicted}`, `lead_pred_<mode>`, `mq_wait_{demand,prefetch}`.
   - Miss-queue counters `mq_*`, plus `pf_drop_mq_reserve` and `promoted_nobit_loads`.
+- **S3d:**
+  - `funnel_src_<source>_<class>`, with `funnel_src_invariant`.
+  - `no_it_pred_loads`, `no_it_pred_promoted_pc`, `pred_inter_thread_nobit`, `nobit_verify_{ok,fail,lost}`.
 - **Demand base:** `demand_sector_accesses` (`GLOBAL_ACC_R`, L1-cached).
 - **Derived:**
   - `coverage_paper = (timely+late)/demand`
@@ -327,6 +333,22 @@ The ablations come from these flags:
     - Synthetic (9) and off-regression (6) runs in addition to the 9 listed, for the synthetic-first rule and the identity check.
     - `run_apps.sh` got an `ONLY` filter to run single inputs.
     - The first synthetic check crashed on the new distribution lines; the parser was fixed and the same outputs were re-checked without re-running.
+- **S3d Promoted strides for all warps + funnel by source** (2026-10-14).
+  - `-snake_promoted_all_warps` (default 1, OQ-32): a promoted inter-thread entry predicts for any warp at PC1, verified at the warp's next load (§3.2).
+  - Diagnostics: the funnel by the source of a record's first prediction; loads without an own inter-thread prediction; verification counts.
+  - **Done 2026-10-14.** gpgpu-sim `97119f36`; accel-sim `976937f` (`SNAKE_PAW0` token, per-source funnel check).
+  - **Gates:**
+    - Synthetic (`sim_run_snake_synth/S3d`, 9 runs): PASS; Fig. 15 (c) unchanged in both modes; trace (d) 90.8%.
+    - Off-regression PASS on 6 (`sim_run_snake_regress/S3d`).
+    - Runs (`sim_run_snake_gate/S3d`, 10): hotspot 512, srad_v1, mri-q, lud 512, histo × {defaults, `SNAKE_IWC0`}; all finish, every invariant OK.
+  - **Findings:** SPEC §8 and `results/S3d.md` §5.
+    - No load at a promoted PC1 is left without a prediction; 33–57% of loads still get none.
+    - coverage_pred rises by up to 6.7 pp (mri-q), and coverage_paper by up to 4.6 pp (hotspot).
+    - lud's demotions rise 14×.
+    - Chain depth 0 beats 3 slightly in IPC.
+  - **Deviations:**
+    - The bit requirement is lifted at every chain step, not only the first. Only the first step is verified, as only it is the next load.
+    - The per-source funnel uses the record's first prediction (S3c used the latest).
 - **S5 Sweep hooks + cleanup.** Sweep configs for Tail {10, 20, 40, ∞}, eviction policy, throttle {25…300} (Figs. 20, 22, 23), the prefetch queue size and issue width (OQ-4, added in S3a; defaults 32 lines and 1 line per cycle stay until then) and `snake_missq_reserve` (OQ-11, default 8); `compare_paper.py`; docs updated.
   - *Done when:* the sweep run dirs generate and the plots/tables are reproducible.
 
@@ -410,5 +432,6 @@ All of OQ-1…OQ-18 from SPEC §7 carry over, plus:
 - **OQ-27 Promotion-time targets (S2).** "Issues prefetching requests for all future warps as soon as … promoted" (§3.2) is read as: every other warp whose Head register is at PC1 and whose warpID bit is not yet set. From S3a the target warp must also still be active (`shader_core_ctx::warp_active`). (medium)
 - **OQ-17 Lane check.** **Decided 2026-10-13:** by default `snake_lane_mode 1`, a deviation from §3.4: the per-PC lane pattern in S2b, replaced in S2c by the stateless run filter. The paper-literal rule stays as mode 0. See SPEC OQ-17.
 - **OQ-9 Footprint.** **Revised 2026-10-13 (S2c):** `snake_footprint` 0 = one 128 B line (default), 1 = exact lane descriptor per Tail entry. See SPEC OQ-9.
+- **OQ-32 (S3d):** promoted inter-thread strides serve all warps; see SPEC §7.
 - **OQ-29…OQ-31 (S3b):** combined lookahead for inter-warp targets, the inter-warp eviction weight, and inter-thread priority in the prefetch queue; see SPEC §7.
 - **OQ-28 Demotion (S2).** A demoted entry (more than `demote_removed` warps removed, §3.2) also clears its warpID vector, so it is re-trained from scratch instead of being re-promoted by the remaining bits. (low)

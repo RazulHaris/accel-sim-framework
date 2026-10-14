@@ -223,6 +223,7 @@ Format: interpretation (confidence).
   - **Prediction funnel (S3c, diagnosis only).** Each prediction record (one per predicted sector in the window, `snake_pred_sectors`) ends in exactly one class: matched by a demand (still queued, dropped queue-full / miss-queue / line-MSHR, duplicate L1 / MSHR, issued late / evicted / timely / other), wrong (no demand within the window; issued or not) or live at the end (`snake_funnel_invariant`).
     - A record takes the mode of its latest prediction and the result of its latest attempt, except that once issued it stays issued and its outcome is that of the issued sector.
     - Lead times (`snake_dist_lead_issue_*`) use the mode of the queue entry that issued the sector.
+    - **S3d:** `snake_funnel_src_*` is the same funnel by the source of the record's **first** prediction. It is used for the per-source attribution in results/S3d.md.
     - Definitions and results: results/S3c_diag.md §1.
   - (decided)
 - **OQ-15 50%-until-trained.** Applies per kernel launch, from launch until the first Tail entry reaches promoted. (low)
@@ -252,11 +253,30 @@ Format: interpretation (confidence).
   - **Issue.** Each issue slot takes the line already partly offered to the L1D, else the oldest ready own-warp line, else the oldest ready inter-warp line. Within a class the queue stays FIFO.
   - With displacement alone, trace (d) reached 89.3%; with displacement and issue priority, 90.8%.
   - (decided)
+- **OQ-32 Promoted inter-thread strides serve all warps (S3d, decided 2026-10-14).**
+  - **Paper basis.**
+    - §3 intro (p.732): Snake "promotes the discovered chains of strides to prefetch for other warps if they are detected at least for three warps".
+    - §3.2 (p.733, SIMT paragraph): "if a consistent stride is detected across multiple threads, it is highly probable that all threads observe the same stride … Snake confirms the stride's consistency across multiple warps before promoting it to issue prefetch requests for future warps".
+    - §3.2 (p.734, verification): "each warp's PC2 and Inter-thread stride are compared with their corresponding values in the Tail table. If they do not match, that particular warp is removed from the warpID vector. If more than two warps are removed … 'not-trained'".
+  - **Implementation** (`-snake_promoted_all_warps 1`, default):
+    - A load at PC1 by a warp without the entry's warpID bit also gets the inter-thread chain. The entry with the warp's bit is preferred, otherwise the most recently used one.
+    - Each step keeps its T1 requirement: promoted at depth 1, trained deeper (OQ-5, OQ-7).
+    - The warp's next load verifies the first step. A match sets its bit through training (Fig. 12 step 4). A mismatch counts as a removed warp of that entry (`warps_removed`, `nobit_verify_fail`), with demotion after more than `-snake_demote_removed` removals (OQ-28).
+    - A Head invalidated in between (OQ-17, OQ-20) leaves the step unverified (`nobit_verify_lost`).
+    - The one-shot promotion-time predictions (OQ-27) are unchanged.
+  - `0` is the S3c behaviour: only warps holding their bit, plus OQ-27, got inter-thread predictions. S3c measured 15–57% of loads at a promoted PC1 without the bit (results/S3c_diag.md §3).
+  - Results: results/S3d.md.
+  - (decided)
 - **OQ-18 Scheduler.** Paper uses GTO. The base QV100 config says `-gpgpu_scheduler lrr` (`configs/tested-cfgs/SM7_QV100/gpgpusim.config:134`, despite the "Greedy then oldest" comment at :133). Run both baseline and Snake with GTO via a `GTO` extra-param config. (high)
 
 OQ-19…OQ-28 (simulator-specific questions, the decisions on clock, Rodinia version and competitors, and the S2 training interpretations) are in [SNAKE_PLAN §12](SNAKE_PLAN.md). OQ-29…OQ-31 (S3b) are above.
 
 ## 8. Design limitations observed in our traces
+- **S3d (results/S3d.md).**
+  - With OQ-32 every load at a promoted PC1 gets an inter-thread prediction. 33–57% of loads still get none, all at PCs without a promoted entry.
+  - Own-warp inter-thread prefetches are rarely wrong but almost never timely. Timely prefetches come from the inter-warp source and its chain (OQ-29), which also produce most of the wrong ones.
+  - In lud, most wrong predictions come from promotion and the no-bit path: 59% of its no-bit verifications fail, and T1 demotions rise from 490 to 6,879.
+  - Chain depth 0 gives slightly better IPC than 3 on all five apps tested.
 - **S3c diagnosis (results/S3c_diag.md, exact footprint).**
   - Issued prefetches are almost never evicted before use. The losses are lateness and non-issue.
     - Issued but late: 7–29% of predicted sectors.
