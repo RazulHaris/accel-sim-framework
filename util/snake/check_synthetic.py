@@ -122,6 +122,10 @@ def check_issue(path, st):
           "pf_woken_warps == 0: %s" % st.get("snake_pf_woken_warps"))
     check(st.get("snake_pf_invariant") == "OK",
           "outcome invariant: %s" % st.get("snake_pf_invariant"))
+    if "snake_funnel_invariant" in st:  # S3c on
+        check(st["snake_funnel_invariant"] == "OK",
+              "funnel invariant (records == pred_sectors): %s"
+              % st["snake_funnel_invariant"])
     dem = max(st.get("snake_demand_sector_accesses", 0), 1)
     tl = st.get("snake_pf_useful_timely", 0) + st.get("snake_pf_late", 0)
     print("  info  footprint=%s issued=%s timely=%s late=%s evicted_unused=%s "
