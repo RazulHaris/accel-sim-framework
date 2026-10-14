@@ -193,6 +193,8 @@ Format: interpretation (confidence).
       - N = 2 gives +97% and N = 4 gives +50% on input 512; N = 8 gives +4.9% (512) and −9% (256), with `pf_caused_resfail` = 0.
       - The S5 sweep varies it.
     - `pf_drop_resource` is the sum of the last three.
+    - **S3c:** `pf_drop_mq_reserve` counts the miss-queue drops in which a demand read miss would still have fit, i.e. only the reserve refused the prefetch (≈ 98% of `pf_drop_miss_queue` in the S3c runs).
+  - **Miss-queue drain (S3c, from the code).** The L1D miss queue (16 entries) sends at most one request per core cycle, when `icnt_has_buffer` holds. With `-network_mode 2` that is the SM's request-network input buffer below 512 packets, whatever the packet size. In every S3c run the buffer never refused, so the drain rate of one request per cycle is the limit (results/S3c_diag.md §2).
   - **`pf_caused_resfail`:** a demand reservation failure counts as caused by Snake when the MSHR table was full while prefetches held entries, or the miss queue was full while it held prefetches. Failures for lack of a free line in the set are not attributed.
   - Demand always wins arbitration (OQ-4). (medium)
 - **OQ-12 Decoupling semantics.**
@@ -216,6 +218,10 @@ Format: interpretation (confidence).
     - **timely:** the first demand access (load or store) hit the filled sector.
     - **evicted_unused:** evicted, or found stale at a later fill, with its bit still set.
     - **unused_at_end:** dropped by an L1D invalidation between kernels, still resident and unused, or still in flight without a merge at the end of the run.
+  - **Prediction funnel (S3c, diagnosis only).** Each prediction record (one per predicted sector in the window, `snake_pred_sectors`) ends in exactly one class: matched by a demand (still queued, dropped queue-full / miss-queue / line-MSHR, duplicate L1 / MSHR, issued late / evicted / timely / other), wrong (no demand within the window; issued or not) or live at the end (`snake_funnel_invariant`).
+    - A record takes the mode of its latest prediction and the result of its latest attempt, except that once issued it stays issued and its outcome is that of the issued sector.
+    - Lead times (`snake_dist_lead_issue_*`) use the mode of the queue entry that issued the sector.
+    - Definitions and results: results/S3c_diag.md §1.
   - (decided)
 - **OQ-15 50%-until-trained.** Applies per kernel launch, from launch until the first Tail entry reaches promoted. (low)
 - **OQ-16 Energy.** AccelWattch is not modified. Add Snake energy offline: accesses × 6.4 pJ + 6 mW × time, from Snake stats. (medium)
@@ -249,6 +255,15 @@ Format: interpretation (confidence).
 OQ-19…OQ-28 (simulator-specific questions, the decisions on clock, Rodinia version and competitors, and the S2 training interpretations) are in [SNAKE_PLAN §12](SNAKE_PLAN.md). OQ-29…OQ-31 (S3b) are above.
 
 ## 8. Design limitations observed in our traces
+- **S3c diagnosis (results/S3c_diag.md, exact footprint).**
+  - Issued prefetches are almost never evicted before use. The losses are lateness and non-issue.
+    - Issued but late: 7–29% of predicted sectors.
+    - Never issued in time (still queued, queue-full or miss-queue drops): 7–58% (mri-q 58%).
+    - Wrong: 10–54% (lud 54%, mostly promotion and inter-warp-chain predictions).
+  - The miss queue drains one request per cycle, and the interconnect never blocks it.
+  - Lead times show why prefetches are late: inter-thread prefetches start ~20 cycles before their demand.
+  - At promotion, Snake prefetches only for the warps whose Head is at PC1 at that moment. Later warps without their warpID bit get no inter-thread prediction; such loads are 15–57% of loads in hotspot, srad_v1, lud and mri-q.
+  - histo's coverage_pred gap is real (30.9% exact).
 - **S3b: coverage_pred approaches the paper; coverage_paper does not.** With inter-warp issue and the combined lookahead (OQ-29), coverage_pred (exact footprint) is hotspot 88%, lud 83% / 73%, srad_v1 81%, mri-q 87%, backprop 72% (paper coverage ~88 / 91 / 87 / 72 / 83%, Fig. 16). coverage_paper is 72% for hotspot but 29–44% for srad_v1, lud and backprop and 10% for mri-q. The difference is mostly prefetches dropped before issue: `pf_drop_resource` (miss-queue slots, OQ-11) is 36k–269k sectors, and lines dropped with the prefetch queue full are 40k–683k sectors. The S5 sweep over queue size, issue width and miss-queue reserve is where this is decided. Timeliness rose (accuracy_paper hotspot 31–33%, srad_v1 8%, histo 10%, vs ≤ 7% in S3a). IPC is within ±0.4% of the baseline except lud 512 (line, −1.2%) and histo (line, −3.8%); decoupling and throttling (S4) are still off.
 - **S3b: lud 512 with the line footprint raises demand MISS_QUEUE_FULL** from 42,855 to 55,360 (+29%; S3a with MQR8: +4.9%). The exact footprint lowers it (23,751). The line footprint requests 4 sectors per prediction against ≤ 2 for lud's loads, so miss-queue pressure grows with the inter-warp volume.
 - **S3b: the inter-warp eviction weight (OQ-30) does not help backprop.** backprop still evicts ~29,000 entries holding a trained inter-warp stride, with 0.9 warp bits on average (S3a 32,137). Every backprop Tail entry has PC1 0x90 or 0x180, and the stride is stored in every entry with that PC1 (OQ-6), so all candidates get the same +3. srad_v1 drops from ~14,000 to ~10,400; lud and histo are unchanged.

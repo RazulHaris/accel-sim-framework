@@ -32,6 +32,15 @@ Updated with every stage. A stage's gate results and its own commit hashes go in
 | S2c stateless lane-run filter (OQ-17), `snake_footprint` setting (OQ-9), `interwarp_trained_pcs` | `293aaaa` | `bc22d0dd` | synthetic PASS (both modes); off-regression vs `bin_ref_v2` PASS (6 workloads); hotspot and backprop excluded 0% (all L = 16); hotspot 80/88 promotions; backprop 0 promotions by design (SPEC §8), 2 inter-warp PCs; srad_v1 2,337 promotions, 16 inter-warp PCs |
 | S3a prefetch issue (inter-thread chain/promotion + intra-warp; Snake-DT) | `1221702`, `9dc2631`, `d836622` | `028012de`, `5c6f2267`, `2d50a9aa` | synthetic PASS (trace (d) coverage_paper 93.0%); 7 apps × 2 footprints finish, no warp woken, invariant OK; off-regression PASS; `snake_missq_reserve` 8 from the lud sweep. Tables: `results/S3a_gate.md` |
 | S3b inter-warp issue (degree 4, resident warps of the CTA), combined lookahead (OQ-29), inter-warp eviction weight (OQ-30), own-warp queue priority (OQ-31) | `bf1fc2f`, `a708e99` | `298c5f94`, `000798a7`, `f1e4f856` | synthetic PASS (Fig. 15 (c) exact with `SNAKE_IWC0`, + {3100, 3200, 3300} by default; trace (d) 90.8%); 9 workloads line + 7 exact finish, no warp woken, invariant OK; off-regression PASS (6). Tables: `results/S3b_gate.md` |
+| S3c diagnosis, stats only (prediction funnel, timing, miss queue) | `59e5bee`, `b7cae56` | `02a9d7de` | synthetic PASS and identical to S3b3; Snake-on runs identical to S3b_fp1; off-regression PASS (6); 9 diagnosis runs. Tables: `results/S3c_diag.md` |
+
+**S3c findings (results/S3c_diag.md §10):**
+- Issued prefetches are almost never evicted before use. Losses come from late issue (7–29% of predicted sectors), from never issuing in time (still queued, queue full, miss-queue reserve: 7–58%) and from wrong predictions (10–54%, lud highest).
+- The L1D miss queue drains one request per cycle, and the interconnect never refused one.
+- Inter-thread prefetches start ~20 cycles before their demand (p50).
+- Reserve 4 adds 1.7–4.0 pp coverage_paper, but raises demand miss-queue waits and MISS_QUEUE_FULL (lud +25% over the baseline).
+- At promotion only warps whose Head is at PC1 get a prediction; later warps without their bit get none (15–57% of loads).
+- histo's coverage_pred gap is real (30.9% with the exact footprint).
 
 **S3b findings, carried to S4 (SPEC §8):**
 - coverage_pred (exact) is near the paper: hotspot 88%, lud 83% / 73%, srad_v1 81%, mri-q 87%, backprop 72%.
@@ -54,4 +63,4 @@ Updated with every stage. A stage's gate results and its own commit hashes go in
 - `sim_run_snake_gate/<stage>`: real-workload gate runs, from S3a on.
 - `sim_run_snake_refcache/bin_ref_v2`: cached baseline outputs.
 
-**Next:** S4, throttling and decoupling (SNAKE_PLAN §8), checking the histo and lud-512 slowdowns and the miss-queue pressure with them on.
+**Next:** decide on the S3c findings (lateness, miss-queue drain, promotion coverage), then S4, throttling and decoupling (SNAKE_PLAN §8).

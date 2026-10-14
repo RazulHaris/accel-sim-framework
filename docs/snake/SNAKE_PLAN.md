@@ -30,6 +30,7 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
 | S1 docs + regression tooling | done | `b930d75` | — | — |
 | S3a issue: inter-thread (chain, promotion) + intra-warp, Snake-DT | done | `1221702`, `9dc2631`, `d836622` (gate results: `snake: S3a gate results`) | `028012de`, `5c6f2267`, `2d50a9aa` | synthetic PASS (trace (d) coverage_paper 93.0% exact and line; (b) 0 issued; (a) saturates without deadlock; Fig. 15 PASS); 7 apps × 2 footprints: all finish, `pf_woken_warps` 0, invariant OK; off-regression vs `bin_ref_v2` PASS (`sim_run_snake_regress/S3a`, `S3a2`); miss-queue reserve 8 from the lud sweep. Tables: `docs/snake/results/S3a_gate.md` |
 | S3b inter-warp issue + combined lookahead + inter-warp eviction weight | done | `bf1fc2f`, `a708e99` (gate results: `snake: S3b gate results`) | `298c5f94`, `000798a7`, `f1e4f856` | synthetic PASS (`sim_run_snake_synth/S3b3`): Fig. 15 (c) exact with `SNAKE_IWC0` and figure + {3100, 3200, 3300} by default; trace (d) 90.8%. 7 apps × line (9 runs) and 7 exact (> 5 pp coverage change): all finish, `pf_woken_warps` 0, invariant OK; off-regression vs `bin_ref_v2` PASS on 6 (`sim_run_snake_regress/S3b`). Tables: `docs/snake/results/S3b_gate.md` |
+| S3c diagnosis (stats only): prediction funnel, timing, miss queue | done | `59e5bee`, `b7cae56` (results: `snake: S3c diagnosis results`) | `02a9d7de` | synthetic PASS, outputs identical to S3b3 apart from volatile lines; Snake-on runs identical to S3b_fp1 (cycles, issued, matched); off-regression vs `bin_ref_v2` PASS on 6 (`sim_run_snake_regress/S3c`); 9 diagnosis runs (`sim_run_snake_gate/S3c`). Tables: `docs/snake/results/S3c_diag.md` |
 | S4 throttling + decoupling | pending | | | |
 | S5 sweeps + cleanup | pending | | | |
 
@@ -237,6 +238,10 @@ The ablations come from these flags:
 - **Prediction (OQ-14):** `pred_sectors`, `demand_pred_matched` (→ coverage_pred), `demand_resfail`.
 - **Tail, S3b analysis:** `tail_evict_interwarp_trained` and `tail_evict_interwarp_wbits` (warp bits of those evicted entries).
 - **Outcome:** `pf_filled`, `pf_useful_timely`, `pf_late`, `pf_evicted_unused`, `pf_unused_at_end`, `pf_caused_resfail`.
+- **S3c diagnosis:**
+  - `funnel_<mode>_<class>` for the prediction funnel, with `funnel_invariant` (SPEC OQ-14).
+  - `snake_dist_*` / `snake_hist_*` distributions: `pred_to_issue_<mode>`, `queue_wait`, `port_wait`, `lead_issue_<mode>_{late,timely,evicted}`, `lead_pred_<mode>`, `mq_wait_{demand,prefetch}`.
+  - Miss-queue counters `mq_*`, plus `pf_drop_mq_reserve` and `promoted_nobit_loads`.
 - **Demand base:** `demand_sector_accesses` (`GLOBAL_ACC_R`, L1-cached).
 - **Derived:**
   - `coverage_paper = (timely+late)/demand`
@@ -309,6 +314,19 @@ The ablations come from these flags:
     - Queue displacement and issue priority for own-warp lines (OQ-31), after trace (d) fell to 88.8% and then 89.3%.
     - Gate results are in a follow-up commit; synthetic ran 3 times (`S3b`, `S3b2`, `S3b3`).
   - Full tables: `docs/snake/results/S3b_gate.md`.
+- **S3c Diagnosis** (2026-10-14). Stats only; no behaviour change.
+  - Prediction funnel per mode, timing distributions (prediction → issue, queue and port wait, issue → first demand per mode and outcome), L1D miss-queue waits and head-of-line counts, `pf_drop_mq_reserve`, `promoted_nobit_loads`.
+  - **Done 2026-10-14.** gpgpu-sim `02a9d7de`; accel-sim `59e5bee` (funnel invariant in `check_synthetic.py`), `b7cae56` (dist-line parsing, `run_apps.sh` `ONLY` filter).
+  - **Checks:**
+    - Synthetic (`sim_run_snake_synth/S3c`, 9 runs): PASS; outputs equal to S3b3 apart from volatile lines.
+    - The 4 current-settings diagnosis runs equal S3b_fp1 (cycles, `pf_issued`, `demand_pred_matched`).
+    - Off-regression PASS on 6 (`sim_run_snake_regress/S3c`).
+  - **Runs** (`sim_run_snake_gate/S3c`, exact footprint, 100M): hotspot 512, srad_v1, mri-q and lud 512 at reserve 8 and 4, plus histo (9).
+  - **Findings:** see SPEC §8 and `results/S3c_diag.md` §10.
+  - **Deviations:**
+    - Synthetic (9) and off-regression (6) runs in addition to the 9 listed, for the synthetic-first rule and the identity check.
+    - `run_apps.sh` got an `ONLY` filter to run single inputs.
+    - The first synthetic check crashed on the new distribution lines; the parser was fixed and the same outputs were re-checked without re-running.
 - **S5 Sweep hooks + cleanup.** Sweep configs for Tail {10, 20, 40, ∞}, eviction policy, throttle {25…300} (Figs. 20, 22, 23), the prefetch queue size and issue width (OQ-4, added in S3a; defaults 32 lines and 1 line per cycle stay until then) and `snake_missq_reserve` (OQ-11, default 8); `compare_paper.py`; docs updated.
   - *Done when:* the sweep run dirs generate and the plots/tables are reproducible.
 
