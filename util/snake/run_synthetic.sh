@@ -8,8 +8,10 @@
 # line footprint and with the exact footprint (-SNAKE_FP1, OQ-9).  The S2
 # gates used QV100-SASS-SYNTH_LRR1-SNAKE-SNAKE_DBG and -SNAKE_LANE0.
 # $FIG15_CFGS (comma-separated, may be empty) are run on the Fig. 15 trace
-# only; the default is the paper-literal -SNAKE_IWC0 (no chain from
-# inter-warp targets, OQ-29), whose Fig. 15 (c) must match the figure exactly.
+# only.  From S3e the default config is the paper-literal one (no chain from
+# inter-warp targets, OQ-29), whose Fig. 15 (c) must match the figure
+# exactly; the extra default -SNAKE_IWC3 checks the chain extension
+# (Fig. 15 (c) plus {3100, 3200, 3300}).
 #
 # usage: run_synthetic.sh <stage> [parallel]
 # Run from a clean tree after a clean build; the script refuses otherwise.
@@ -21,7 +23,7 @@ ACCELSIM=$(cd "$(dirname "$0")/../.." && pwd)
 OUT=$ACCELSIM/sim_run_snake_synth/$STAGE
 CFG=QV100-SASS-SYNTH_LRR1-SNAKE_DT-SNAKE_DBG
 CFGS=${CFGS:-$CFG,$CFG-SNAKE_FP1}
-FIG15_CFGS=${FIG15_CFGS-$CFG-SNAKE_IWC0}
+FIG15_CFGS=${FIG15_CFGS-$CFG-SNAKE_IWC3}
 
 cd "$ACCELSIM"
 for r in . gpu-simulator/gpgpu-sim; do
