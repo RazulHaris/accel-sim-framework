@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Check Snake's training on the synthetic traces (SNAKE_PLAN.md S2 gate).
 
-    check_synthetic.py <runs dir> <trace root> [<config>]
+    check_synthetic.py <runs dir> <trace root> [<config> [<apps>]]
 
 <runs dir>/<app>/NO_ARGS/<config>/sim.out must come from a run with
 -snake_enable 1 -snake_debug_trace 1 (any config directory if <config> is
 not given; there must then be exactly one); <trace root>/manifest.json is written by
-gen_synthetic_traces.py.  Exit status 0 only if every check passes.
+gen_synthetic_traces.py.  <apps> (comma-separated, default all) limits the
+check to those snake-synth apps.  Exit status 0 only if every check passes.
 
 T1/T2 are compared by state name (OQ-5).  The figure prints codes for them
 that differ from the OQ-5 labels; the mapping is printed, not asserted.
@@ -19,6 +20,13 @@ exact footprint (-snake_footprint 1; reported for the line footprint), trace
 MISS_QUEUE_FULL failures and the prefetch drops are reported) and trace (b)
 must issue almost nothing (< 1% of its demand sectors).  coverage_pred
 (OQ-14) is reported next to coverage_paper and accuracy_paper.
+
+From S3b on (inter-warp issue), Fig. 15 (c) is also checked against the
+sectors issued for the 9th observe ("PF" debug lines).  With
+-snake_interwarp_chain_depth 0 the predictions are exactly the figure's
+{2600, 2700, 2800, 3000}; with depth >= 1 (default 3) the inter-warp targets
+W2..W4 also follow the trained 520->540 stride 500 (OQ-29), which adds
+{3100, 3200, 3300}.
 """
 import glob
 import json
@@ -26,6 +34,7 @@ import os
 import re
 import sys
 
+PF_RE = re.compile(r"^n=(\d+) mode=(\d+) sector=(\d+) res=(\w+)$")
 DBG = re.compile(r"^SNAKE_DBG sm=(\d+) cyc=(\d+) (\S+) ?(.*)$")
 KV = re.compile(r"(\w+)=(\S+)")
 failures = []
@@ -46,7 +55,7 @@ def parse(path):
         if not m:
             continue
         sm = int(m.group(1))
-        d = sms.setdefault(sm, {"obs": [], "preds": {}, "state": {}})
+        d = sms.setdefault(sm, {"obs": [], "preds": {}, "state": {}, "pf": []})
         kind, rest = m.group(3), m.group(4)
         kv = dict(KV.findall(rest))
         if kind == "OBS":
@@ -56,6 +65,10 @@ def parse(path):
         elif kind == "PRED" and d["obs"]:
             d["preds"][d["obs"][-1][0]].append(
                 (kv["mode"], int(kv["target_w"]), int(kv["addr"])))
+        elif kind == "PF":
+            pm = PF_RE.match(rest)
+            d["pf"].append((int(pm.group(1)), int(pm.group(2)),
+                            int(pm.group(3)), pm.group(4)))
         elif kind == "STATE_BEGIN":
             cur_state = {"head": {}, "tail": []}
         elif kind == "S_HEAD":
@@ -91,6 +104,8 @@ def stats(path):
                 out[k.strip()] = v.split()[0]
         elif line.startswith("-snake_footprint"):
             out["footprint"] = int(line.split()[1])
+        elif line.startswith("-snake_interwarp_chain_depth"):
+            out["iw_chain"] = int(line.split()[1])
         elif "exit detected" in line:
             out["done"] = True
         elif "Total_core_cache_fail_stats_breakdown[GLOBAL_ACC_R][MISS_QUEUE_FULL]" in line:
@@ -143,10 +158,11 @@ def sim_out(runs, app, cfg):
 
 def check_fig15(path, p):
     print("== (c) Fig. 15 example: %s" % path)
-    check_issue(path, stats(path))
+    st = stats(path)
+    check_issue(path, st)
     d = parse(path)
     check(list(d) == [0], "all observes on SM 0 (one CTA)")
-    d = d.get(0, {"obs": [], "preds": {}, "state": {}})
+    d = d.get(0, {"obs": [], "preds": {}, "state": {}, "pf": []})
     W = p["warp_of"]
     A, B = p["pc_a"], p["pc_b"]
     want = ([(W["W%d" % (k + 1)], A, p["phase_a"][k]) for k in range(4)] +
@@ -191,8 +207,25 @@ def check_fig15(path, p):
     check(len(s["tail"]) == 2 and e1 and e2,
           "(c) Tail: 520->540 T1 trained, intra-warp 1500 (T2 observed); "
           "540->520 stride 1000 W{1} T1 observed: %s" % s["tail"])
-    check(preds([9]) == [2600, 2700, 2800, 3000],
-          "(c) predictions {2600, 2700, 2800, 3000}: %s" % preds([9]))
+    # S3b: the figure's queue, plus the inter-warp targets' chain (OQ-29).
+    chain = st.get("iw_chain")
+    want_c = [2600, 2700, 2800, 3000] + ([3100, 3200, 3300] if chain else [])
+    check(chain is not None, "-snake_interwarp_chain_depth in the option dump: %s"
+          % chain)
+    check(preds([9]) == want_c, "(c) predictions %s (interwarp_chain_depth %s): %s"
+          % (want_c, chain, preds([9])))
+    # Issued sectors of the 9th observe: footprint 0 requests each predicted
+    # address's 128 B line, footprint 1 the 32 lanes 4 B apart from it; none
+    # of them is in L1 or in flight before.
+    if st.get("footprint") == 1:
+        want_sec = {(a + 4 * i) // 32 * 32 for a in want_c for i in range(32)}
+    else:
+        want_sec = {a // 128 * 128 + 32 * k for a in want_c for k in range(4)}
+    got_sec = {sec for n, _, sec, res in d["pf"] if n == 9 and res == "issued"}
+    check(got_sec == want_sec, "(c) issued sectors (footprint %s) = %s: %s"
+          % (st.get("footprint"), sorted(want_sec), sorted(got_sec)))
+    modes = sorted({(m, a) for m, _, a in d["preds"].get(9, [])})
+    print("  info  (c) prediction modes: %s" % modes)
     print("  note  T1/T2 codes: Fig. 15 prints the promoted entry in (b) as '01',"
           " the trained one in (c) as '11', and the one-warp entry and the new"
           " intra stride in (c) as '00'; OQ-5 labels them promoted (10),"
@@ -268,11 +301,14 @@ def check_random(path, p):
 def main():
     runs, root = sys.argv[1], sys.argv[2]
     cfg = sys.argv[3] if len(sys.argv) > 3 else "*"
+    apps = sys.argv[4].split(",") if len(sys.argv) > 4 else None
     man = json.load(open(os.path.join(root, "manifest.json")))
     for app, fn in (("snake-synth-fig15", check_fig15),
                     ("snake-synth-strided", check_strided),
                     ("snake-synth-strided-dep", check_strided_dep),
                     ("snake-synth-random", check_random)):
+        if apps is not None and app not in apps:
+            continue
         path = sim_out(runs, app, cfg)
         if path:
             fn(path, man[app])

@@ -7,6 +7,9 @@
 # the default is the S3a set, Snake-DT (no decoupling or throttling) with the
 # line footprint and with the exact footprint (-SNAKE_FP1, OQ-9).  The S2
 # gates used QV100-SASS-SYNTH_LRR1-SNAKE-SNAKE_DBG and -SNAKE_LANE0.
+# $FIG15_CFGS (comma-separated, may be empty) are run on the Fig. 15 trace
+# only; the default is the paper-literal -SNAKE_IWC0 (no chain from
+# inter-warp targets, OQ-29), whose Fig. 15 (c) must match the figure exactly.
 #
 # usage: run_synthetic.sh <stage> [parallel]
 # Run from a clean tree after a clean build; the script refuses otherwise.
@@ -18,6 +21,7 @@ ACCELSIM=$(cd "$(dirname "$0")/../.." && pwd)
 OUT=$ACCELSIM/sim_run_snake_synth/$STAGE
 CFG=QV100-SASS-SYNTH_LRR1-SNAKE_DT-SNAKE_DBG
 CFGS=${CFGS:-$CFG,$CFG-SNAKE_FP1}
+FIG15_CFGS=${FIG15_CFGS-$CFG-SNAKE_IWC0}
 
 cd "$ACCELSIM"
 for r in . gpu-simulator/gpgpu-sim; do
@@ -37,6 +41,11 @@ echo "build: $tags" | tee "$OUT/BUILDS.txt"
 python3 -I util/snake/gen_synthetic_traces.py "$OUT/traces"
 python3 util/job_launching/run_simulations.py -B snake-synth -C "$CFGS" -T "$OUT/traces" \
     -N snake_synth_$STAGE -r "$OUT/runs" -n >/dev/null
+[ -z "$FIG15_CFGS" ] || python3 util/job_launching/run_simulations.py \
+    -B snake-synth:snake-synth-fig15 -C "$FIG15_CFGS" -T "$OUT/traces" \
+    -N snake_synth_${STAGE}_fig15 -r "$OUT/runs" -n >/dev/null
+find "$OUT/runs" -name justrun.sh -printf '%h\n' | sort | sed "s#^$OUT/runs/##"
+echo "$(find "$OUT/runs" -name justrun.sh | wc -l) runs"
 
 run_job() {  # <job dir>
   cd "$1" && LD_LIBRARY_PATH="$OUT/bin/lib" "$OUT/bin/accel-sim.out" \
@@ -50,5 +59,9 @@ status=0
 for c in ${CFGS//,/ }; do
   echo "######## $c"
   python3 -I util/snake/check_synthetic.py "$OUT/runs" "$OUT/traces" "$c" || status=1
+done
+for c in ${FIG15_CFGS//,/ }; do
+  echo "######## $c (Fig. 15 only)"
+  python3 -I util/snake/check_synthetic.py "$OUT/runs" "$OUT/traces" "$c" snake-synth-fig15 || status=1
 done
 exit $status

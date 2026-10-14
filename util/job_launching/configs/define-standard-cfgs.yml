@@ -250,6 +250,16 @@ SNAKE_MQR4:
 SNAKE_MQR8:
     extra_params: "-snake_missq_reserve 8"
 
+# Paper-literal inter-warp prefetching (OQ-29): no promoted inter-thread chain
+# from the inter-warp targets, as in the paper's Fig. 15 (c).
+SNAKE_IWC0:
+    extra_params: "-snake_interwarp_chain_depth 0"
+
+# Paper-literal Tail eviction (OQ-30): warpID popcount only, no extra weight
+# for a trained inter-warp stride.
+SNAKE_IWW0:
+    extra_params: "-snake_interwarp_weight 0"
+
 # One LRR scheduler per SM without the sub-core model, so the warps of a CTA
 # issue strictly round robin, as in the paper's Fig. 15 example.
 SYNTH_LRR1:
