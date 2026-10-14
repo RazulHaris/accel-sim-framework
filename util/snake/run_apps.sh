@@ -9,6 +9,9 @@
 #   <configs> comma-separated run_simulations.py configs.
 #   APPS      run_simulations.py -B selectors (rodinia-3.1 and parboil apps
 #             go to their trace roots); default: the 7 suite apps (§10).
+#   ONLY      extended regex over <app>/<args>/<config>: only matching jobs
+#             are kept and run (the others are removed before anything runs),
+#             e.g. to run one input of an app with several (S3c).
 # Jobs go to <out dir>/runs/<app>/<args>/<config>/sim.out.  A job that exists
 # already is never re-run (the script refuses an existing <out dir>/runs).
 
@@ -43,6 +46,10 @@ PB=$(echo "$APPS" | tr ',' '\n' | { grep '^parboil' || true; } | paste -sd, -)
     -T hw_run/rodinia-3.1/11.0 -N "$(basename "$OUT")_rod" -r "$OUT/runs" -n >/dev/null
 [ -z "$PB" ] || python3 util/job_launching/run_simulations.py -B "$PB" -C "$CFGS" \
     -T hw_run/parboil -N "$(basename "$OUT")_pb" -r "$OUT/runs" -n >/dev/null
+if [ -n "${ONLY:-}" ]; then
+  find "$OUT/runs" -name justrun.sh -printf '%h\n' | sed "s#^$OUT/runs/##" | { grep -Ev "$ONLY" || true; } |
+    while read -r j; do rm -rf "${OUT:?}/runs/$j"; done
+fi
 find "$OUT/runs" -name justrun.sh -printf '%h\n' | sort | sed "s#^$OUT/runs/##" | tee "$OUT/JOBS.txt"
 echo "$(wc -l < "$OUT/JOBS.txt") jobs"
 

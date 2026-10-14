@@ -100,6 +100,8 @@ def stats(path):
     for line in open(path, errors="replace"):
         if line.startswith("snake_"):
             k, _, v = line.partition(" = ")
+            if not v.split():  # S3c snake_dist_* / empty snake_hist_* lines
+                continue
             try:
                 out[k.strip()] = int(v)
             except ValueError:
