@@ -132,6 +132,7 @@ On a load (w, p, a):
 | mri-q | ~72% | ~60% | ~4% | ~0.96 |
 | **Avg / GMEAN** | **80%** | **75%** | **17%** | **0.82 (−17%)** |
 
+- **Memory-path check (2026-10-14):** our config matches Tab. 1 except `-gpgpu_l1_latency` 20 (28) and `-gpgpu_l2_rop_latency` 160 (212). The baselines reproduce the paper's "miss-queue congestion dominates reservation fails" (§2: 71–100% MISS_QUEUE_FULL), at lower fail rates and interconnect utilisation than Figs. 3–4 (results/missq_config_check.md, VERSION_DIFF).
 - **Other reference points:**
   - Baseline L1 hit rate 45% → Snake 79% → Isolated-Snake 84% (§5.7).
   - Snake beats Snake-DT by 13% and Snake-T by 7% IPC (§5.2).
@@ -194,6 +195,7 @@ Format: interpretation (confidence).
       - The S5 sweep varies it.
     - `pf_drop_resource` is the sum of the last three.
     - **S3c:** `pf_drop_mq_reserve` counts the miss-queue drops in which a demand read miss would still have fit, i.e. only the reserve refused the prefetch (≈ 98% of `pf_drop_miss_queue` in the S3c runs).
+  - **Miss-queue size (2026-10-14).** The paper gives no miss-queue size or drain rate; Accel-Sim's 16 is kept (the same in dev, release and our base; results/missq_config_check.md).
   - **Miss-queue drain (S3c, from the code).** The L1D miss queue (16 entries) sends at most one request per core cycle, when `icnt_has_buffer` holds. With `-network_mode 2` that is the SM's request-network input buffer below 512 packets, whatever the packet size. In every S3c run the buffer never refused, so the drain rate of one request per cycle is the limit (results/S3c_diag.md §2).
   - **`pf_caused_resfail`:** a demand reservation failure counts as caused by Snake when the MSHR table was full while prefetches held entries, or the miss queue was full while it held prefetches. Failures for lack of a free line in the set are not attributed.
   - Demand always wins arbitration (OQ-4). (medium)

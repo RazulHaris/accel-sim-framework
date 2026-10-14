@@ -75,6 +75,23 @@ So the authors overrode them, or 1530 MHz is the nominal V100 boost clock quoted
 
   Cycles change by less than 0.7%. The wild lane addresses produced spurious L1 hits, because many warps hit the same wild line, and spurious misses. Without them, backprop's L1D read hits fall by 76% and its DRAM reads by 5%. hotspot 1024 also simulated a few more instructions within the 100M cap (100,001,955 → 100,006,626).
 
+## Miss-queue and memory-path check (2026-10-14, no runs)
+Details: [results/missq_config_check.md](results/missq_config_check.md).
+- **Config vs Tab. 1.**
+  - Ours (= dev `6b244a5d` apart from the clock) matches: L1D 128 KB / 256-way / 128 B / 4 banks / MSHR 512 merge 8; L2 96 KB per sub-partition, 24-way, 128 B, 64 sub-partitions; the DRAM timings.
+  - Two settings differ: `-gpgpu_l1_latency` 20 (paper 28 cycles) and `-gpgpu_l2_rop_latency` 160 (paper 212). Both knobs are fixed pipeline delays, while the paper's values are probably measured latencies; ours are not measurable from the outputs.
+  - The L1D size depends on each kernel's shared-memory carve-out (96–128 KB in our apps).
+  - Release `971dd69e` differs more (streaming L1D, 4,096 MSHRs, merge 64).
+  - The miss queue is 16 in all three versions; the paper gives no size or drain rate. **Keep 16.**
+- **Code.**
+  - One shared miss queue per L1D, fed by up to 4 banks per cycle and drained at most one request per cycle.
+  - The drain blocks only if the SM's request-network input buffer holds 512 packets (`-network_mode 2` ignores the packet size). It never did in our outputs.
+  - A rejected demand stays at its bank's latency-queue head, retried every cycle, and blocks that bank.
+- **Figs. 3–5 from the bin_ref_v2 baselines.**
+  - Miss-queue congestion causes 71–100% of reservation fails, as the paper says. The fail rates are lower (GMEAN 0.17 without nw vs 0.26; hotspot 0.08 vs 0.57, srad_v1 0.22 vs 0.71); backprop matches.
+  - L1↔L2 utilisation is lower (10.5% vs 33% average, peak = 64 packets/cycle).
+  - Fig. 5 is not reproducible from the outputs; a scheduler-stall proxy is given.
+
 ## Why my numbers may differ from the paper even with a correct implementation
 1. **Scheduler:** the base uses lrr; the paper used GTO. **Mitigation:** run with `-gpgpu_scheduler gto`.
 2. **Clock:** the base runs QV100 at 1132 MHz; the paper states 1530 MHz.
