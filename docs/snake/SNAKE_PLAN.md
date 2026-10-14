@@ -29,7 +29,7 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
 | S2c stateless lane-run filter + footprint setting | done | `293aaaa` (gate results: `snake: S2c gate results`) | `bc22d0dd` | synthetic PASS in lane modes 1 and 0 (Fig. 15 exact; random: all 512 scattered loads excluded; `sim_run_snake_synth/S2c2`). Off-regression vs `bin_ref_v2` PASS on 6 workloads, ref outputs reused from S2c (`sim_run_snake_regress/S2c2`). Plausibility (mode 1, the off-regression `on` runs): hotspot 512/1024 excluded 0%, all L=16, Tail hits 99.3%, promotions 80/88, 2 inter-warp PCs, chain depth 1 for 35%/37%; backprop excluded 0%, all L=16, 0 promotions (SPEC §8), interwarp_trained 32,624 on 2 PCs; srad_v1 excluded 2.5%, Tail hits 74.2%, 2,337 promotions, 16 inter-warp (kernel, PC) pairs, chain depth 0/1/2/3: 89.8/9.9/0.3/0.1% |
 | S1 docs + regression tooling | done | `b930d75` | — | — |
 | S3a issue: inter-thread (chain, promotion) + intra-warp, Snake-DT | done | `1221702`, `9dc2631`, `d836622` (gate results: `snake: S3a gate results`) | `028012de`, `5c6f2267`, `2d50a9aa` | synthetic PASS (trace (d) coverage_paper 93.0% exact and line; (b) 0 issued; (a) saturates without deadlock; Fig. 15 PASS); 7 apps × 2 footprints: all finish, `pf_woken_warps` 0, invariant OK; off-regression vs `bin_ref_v2` PASS (`sim_run_snake_regress/S3a`, `S3a2`); miss-queue reserve 8 from the lud sweep. Tables: `docs/snake/results/S3a_gate.md` |
-| S3b inter-warp issue | pending | | | |
+| S3b inter-warp issue + combined lookahead + inter-warp eviction weight | done | `bf1fc2f`, `a708e99` (gate results: `snake: S3b gate results`) | `298c5f94`, `000798a7`, `f1e4f856` | synthetic PASS (`sim_run_snake_synth/S3b3`): Fig. 15 (c) exact with `SNAKE_IWC0` and figure + {3100, 3200, 3300} by default; trace (d) 90.8%. 7 apps × line (9 runs) and 7 exact (> 5 pp coverage change): all finish, `pf_woken_warps` 0, invariant OK; off-regression vs `bin_ref_v2` PASS on 6 (`sim_run_snake_regress/S3b`). Tables: `docs/snake/results/S3b_gate.md` |
 | S4 throttling + decoupling | pending | | | |
 | S5 sweeps + cleanup | pending | | | |
 
@@ -166,11 +166,11 @@ Budget with Snake on: **≤15% slower** simulation. With Snake off: **within run
 
 ## 5. Prefetch request lifecycle
 1. **Predict** in `observe`.
-   - Order: inter-thread chain (depth ≤ `max_chain_depth` × throttle factor), then inter-warp (≤`interwarp_degree` targets), then intra-warp.
+   - Order: promotion-time predictions, inter-thread chain (depth ≤ `max_chain_depth` × throttle factor), then inter-warp (≤`interwarp_degree` resident targets, then each target's promoted chain ≤ `interwarp_chain_depth`, OQ-29), then intra-warp.
    - Each target warp base is expanded to sectors (OQ-9) and grouped into **one queue entry per 128 B line** (OQ-4, S3a). Sectors already queued → `pf_dup_queue`.
-   - A full queue drops the newest line (`pf_drop_queue_full`, in sectors).
+   - A full queue drops the newest line (`pf_drop_queue_full`, in sectors). From S3b an own-warp line (inter-thread, promotion, intra-warp) first displaces the newest inter-warp line not yet being offered (`pf_queue_displaced`, OQ-31).
 2. **Wait** `snake_latency` cycles.
-3. **Issue** in `ldst_unit::snake_issue` after the demand stage, when not throttled. Up to `issue_width` lines per cycle, each sector to a bank no demand used this cycle (OQ-4). `l1_cache::snake_prefetch`, per sector:
+3. **Issue** in `ldst_unit::snake_issue` after the demand stage, when not throttled. Up to `issue_width` lines per cycle (from S3b: the line already being offered, else the oldest ready own-warp line, else the oldest ready inter-warp line; OQ-31), each sector to a bank no demand used this cycle (OQ-4). `l1_cache::snake_prefetch`, per sector:
    - tag probe HIT or HIT_RESERVED → `pf_dup_l1`
    - MSHR has the sector → `pf_dup_mshr`
    - no line can be reserved → `pf_drop_line`; MSHR free ≤ `mshr_reserve` → `pf_drop_mshr`; miss queue full → `pf_drop_miss_queue` (together `pf_drop_resource`)
@@ -201,6 +201,8 @@ Budget with Snake on: **≤15% slower** simulation. With Snake off: **within run
 | `snake_demote_removed` | uint | 2 | ">2 removed → untrained" (§3.2) |
 | `snake_max_chain_depth` | uint | 3 | OQ-7 |
 | `snake_interwarp_degree` | uint | 4 | OQ-8 |
+| `snake_interwarp_chain_depth` | uint | 3 | promoted inter-thread steps from each inter-warp target; 0 = paper Fig. 15 (OQ-29, S3b) |
+| `snake_interwarp_weight` | uint | 3 | Tail eviction score added for a trained inter-warp stride; 0 = paper popcount (OQ-30, S3b) |
 | `snake_enable_inter_thread` / `_inter_warp` / `_intra_warp` | bool | 1/1/1 | s-Snake = 1/0/0 (§4) |
 | `snake_lane_mode` | uint | 1 | 0 = §3.4 equal lane strides; 1 = stateless run filter, L ∈ {32,16,8,4} (deviation, OQ-17) |
 | `snake_footprint` | uint | 0 | 0 = one 128 B line per prediction (missing sectors only); 1 = exact lane descriptor per Tail entry (OQ-9) |
@@ -231,7 +233,7 @@ The ablations come from these flags:
 - **s-Snake** = inter-thread only
 
 ## 7. Stats (per SM; GPU sum printed as `snake_*`)
-- **Issue:** `pf_generated`, `pf_issued` (`_inter_thread`, `_intra_warp`, `_promotion`), `pf_dup_queue`, `pf_dup_l1`, `pf_dup_mshr`, `pf_drop_queue_full`, `pf_drop_resource` = `pf_drop_line` + `pf_drop_mshr` + `pf_drop_miss_queue`, `pf_wait_port`, `pf_woken_warps` (must be 0), `pf_drop_throttled` (S4).
+- **Issue:** `pf_generated`, `pf_issued` (`_inter_thread`, `_intra_warp`, `_promotion`, from S3b `_inter_warp`, `_inter_warp_chain`), `pf_queue_displaced` (S3b), `pf_dup_queue`, `pf_dup_l1`, `pf_dup_mshr`, `pf_drop_queue_full`, `pf_drop_resource` = `pf_drop_line` + `pf_drop_mshr` + `pf_drop_miss_queue`, `pf_wait_port`, `pf_woken_warps` (must be 0), `pf_drop_throttled` (S4).
 - **Prediction (OQ-14):** `pred_sectors`, `demand_pred_matched` (→ coverage_pred), `demand_resfail`.
 - **Tail, S3b analysis:** `tail_evict_interwarp_trained` and `tail_evict_interwarp_wbits` (warp bits of those evicted entries).
 - **Outcome:** `pf_filled`, `pf_useful_timely`, `pf_late`, `pf_evicted_unused`, `pf_unused_at_end`, `pf_caused_resfail`.
@@ -289,6 +291,24 @@ The ablations come from these flags:
     - `-snake_missq_reserve` was added.
     - The planned gate count was 16 app runs; it is 18, because lud and hotspot have two inputs.
   - Full tables: `docs/snake/results/S3a_gate.md`.
+- **S3b Inter-warp issue** (2026-10-14).
+  - Inter-warp predictions are issued: degree 4, targets are the resident warps of the same CTA (OQ-8).
+  - Combined lookahead (OQ-29): each target also follows ≤ 3 promoted inter-thread strides from its predicted PC1 address. `-snake_interwarp_chain_depth 0` (`SNAKE_IWC0`) is the paper's Fig. 15.
+  - Tail eviction score = popcount + `-snake_interwarp_weight` (3) for a trained inter-warp stride (OQ-30). Weight 0 (`SNAKE_IWW0`) is the paper's rule.
+  - Inter-thread priority in the queue and at issue (OQ-31).
+  - **Done 2026-10-14.** gpgpu-sim `298c5f94` (issue, lookahead, weight), `000798a7` (queue displacement), `f1e4f856` (issue priority); accel-sim `bf1fc2f` (checks, configs), `a708e99` (Fig. 15 check on offered sectors).
+  - **Gates:**
+    - Synthetic (`sim_run_snake_synth/S3b3`, 9 runs): PASS. Fig. 15 (c) predictions are exactly {2600, 2700, 2800, 3000} with `SNAKE_IWC0`, and that set plus {3100, 3200, 3300} by default (line and exact). Every predicted sector is offered to the L1D once; 2 / 9 / 16 are dropped for miss-queue slots. Trace (d) coverage_paper 90.8% (S3a 93.0%), (b) issues 0.
+    - The 7 apps (9 workloads), line footprint (`sim_run_snake_gate/S3b`, 9 runs), and exact footprint for the 7 workloads whose coverage_paper changed by > 5 pp (`sim_run_snake_gate/S3b_fp1`; nw and histo not run): all finish, `pf_woken_warps` 0, invariant OK.
+    - Off-regression vs `bin_ref_v2` (ref cached from S2c, `ON=0`): PASS on 6 workloads (`sim_run_snake_regress/S3b`).
+    - Baselines reused from `sim_run_snake_refcache/bin_ref_v2`, none re-run.
+  - **Findings (SPEC §8):** coverage_pred is close to the paper (hotspot 88%, lud 83%, srad_v1 81%, mri-q 87%), coverage_paper is not (dropped prefetches); lud 512 line raises demand MISS_QUEUE_FULL by 29%; histo line −3.8% IPC; the eviction weight does not help backprop.
+  - **Deviations (each agreed 2026-10-14):**
+    - Combined lookahead behind an option, with the Fig. 15 gate run in both modes (OQ-29).
+    - The Fig. 15 gate compares the sectors offered to the L1D, since the miss-queue reserve drops some of the burst.
+    - Queue displacement and issue priority for own-warp lines (OQ-31), after trace (d) fell to 88.8% and then 89.3%.
+    - Gate results are in a follow-up commit; synthetic ran 3 times (`S3b`, `S3b2`, `S3b3`).
+  - Full tables: `docs/snake/results/S3b_gate.md`.
 - **S5 Sweep hooks + cleanup.** Sweep configs for Tail {10, 20, 40, ∞}, eviction policy, throttle {25…300} (Figs. 20, 22, 23), the prefetch queue size and issue width (OQ-4, added in S3a; defaults 32 lines and 1 line per cycle stay until then) and `snake_missq_reserve` (OQ-11, default 8); `compare_paper.py`; docs updated.
   - *Done when:* the sweep run dirs generate and the plots/tables are reproducible.
 
@@ -372,4 +392,5 @@ All of OQ-1…OQ-18 from SPEC §7 carry over, plus:
 - **OQ-27 Promotion-time targets (S2).** "Issues prefetching requests for all future warps as soon as … promoted" (§3.2) is read as: every other warp whose Head register is at PC1 and whose warpID bit is not yet set. From S3a the target warp must also still be active (`shader_core_ctx::warp_active`). (medium)
 - **OQ-17 Lane check.** **Decided 2026-10-13:** by default `snake_lane_mode 1`, a deviation from §3.4: the per-PC lane pattern in S2b, replaced in S2c by the stateless run filter. The paper-literal rule stays as mode 0. See SPEC OQ-17.
 - **OQ-9 Footprint.** **Revised 2026-10-13 (S2c):** `snake_footprint` 0 = one 128 B line (default), 1 = exact lane descriptor per Tail entry. See SPEC OQ-9.
+- **OQ-29…OQ-31 (S3b):** combined lookahead for inter-warp targets, the inter-warp eviction weight, and inter-thread priority in the prefetch queue; see SPEC §7.
 - **OQ-28 Demotion (S2).** A demoted entry (more than `demote_removed` warps removed, §3.2) also clears its warpID vector, so it is re-trained from scratch instead of being re-promoted by the remaining bits. (low)

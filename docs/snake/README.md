@@ -31,12 +31,14 @@ Updated with every stage. A stage's gate results and its own commit hashes go in
 | Docs for the parser fix, upstream issue draft | `61c0dc1` | — | — |
 | S2c stateless lane-run filter (OQ-17), `snake_footprint` setting (OQ-9), `interwarp_trained_pcs` | `293aaaa` | `bc22d0dd` | synthetic PASS (both modes); off-regression vs `bin_ref_v2` PASS (6 workloads); hotspot and backprop excluded 0% (all L = 16); hotspot 80/88 promotions; backprop 0 promotions by design (SPEC §8), 2 inter-warp PCs; srad_v1 2,337 promotions, 16 inter-warp PCs |
 | S3a prefetch issue (inter-thread chain/promotion + intra-warp; Snake-DT) | `1221702`, `9dc2631`, `d836622` | `028012de`, `5c6f2267`, `2d50a9aa` | synthetic PASS (trace (d) coverage_paper 93.0%); 7 apps × 2 footprints finish, no warp woken, invariant OK; off-regression PASS; `snake_missq_reserve` 8 from the lud sweep. Tables: `results/S3a_gate.md` |
+| S3b inter-warp issue (degree 4, resident warps of the CTA), combined lookahead (OQ-29), inter-warp eviction weight (OQ-30), own-warp queue priority (OQ-31) | `bf1fc2f`, `a708e99` | `298c5f94`, `000798a7`, `f1e4f856` | synthetic PASS (Fig. 15 (c) exact with `SNAKE_IWC0`, + {3100, 3200, 3300} by default; trace (d) 90.8%); 9 workloads line + 7 exact finish, no warp woken, invariant OK; off-regression PASS (6). Tables: `results/S3b_gate.md` |
 
-**S3a findings, carried to S3b (SPEC §8):**
-- Coverage is mostly late, since there is no inter-warp lookahead yet, so IPC within ±0.4% is expected.
-- coverage_pred is far below the paper (hotspot 35%, srad_v1 14%); re-check after S3b.
-- Inter-warp Tail entries are evicted with ~0.9 warp bits (backprop); fix in S3b.
-- The non-lud apps were not re-run with miss-queue reserve 8, because they dropped < 10% of their prefetches for miss-queue slots.
+**S3b findings, carried to S4 (SPEC §8):**
+- coverage_pred (exact) is near the paper: hotspot 88%, lud 83% / 73%, srad_v1 81%, mri-q 87%, backprop 72%.
+- coverage_paper lags (hotspot 72%, others 10–44%), because many prefetches are dropped for miss-queue slots or with the prefetch queue full. The S5 sweep (queue size, issue width, miss-queue reserve) decides that.
+- IPC is within ±0.4% of the baseline except lud 512 line (−1.2%) and histo line (−3.8%), without decoupling or throttling.
+- lud 512 line raises demand MISS_QUEUE_FULL by 29% (the exact footprint lowers it).
+- The eviction weight (OQ-30) does not help backprop: every entry there holds an inter-warp stride. srad_v1's such evictions fall by ~25%.
 
 **In progress:** nothing.
 
@@ -52,4 +54,4 @@ Updated with every stage. A stage's gate results and its own commit hashes go in
 - `sim_run_snake_gate/<stage>`: real-workload gate runs, from S3a on.
 - `sim_run_snake_refcache/bin_ref_v2`: cached baseline outputs.
 
-**Next:** S3b, issue inter-warp prefetches (SNAKE_PLAN §8), using the S3a `tail_evict_interwarp_trained` analysis.
+**Next:** S4, throttling and decoupling (SNAKE_PLAN §8), checking the histo and lud-512 slowdowns and the miss-queue pressure with them on.
