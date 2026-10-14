@@ -22,7 +22,9 @@ must issue almost nothing (< 1% of its demand sectors).  coverage_pred
 (OQ-14) is reported next to coverage_paper and accuracy_paper.
 
 From S3b on (inter-warp issue), Fig. 15 (c) is also checked against the
-sectors issued for the 9th observe ("PF" debug lines).  With
+sectors offered to the L1D for the 9th observe ("PF" debug lines: issued, or
+dropped for an L1D resource; the miss-queue drops, a resource limit of the
+16-entry miss queue with 8 slots kept for demand, are reported).  With
 -snake_interwarp_chain_depth 0 the predictions are exactly the figure's
 {2600, 2700, 2800, 3000}; with depth >= 1 (default 3) the inter-warp targets
 W2..W4 also follow the trained 520->540 stride 500 (OQ-29), which adds
@@ -214,16 +216,22 @@ def check_fig15(path, p):
           % chain)
     check(preds([9]) == want_c, "(c) predictions %s (interwarp_chain_depth %s): %s"
           % (want_c, chain, preds([9])))
-    # Issued sectors of the 9th observe: footprint 0 requests each predicted
+    # Sectors offered for the 9th observe: footprint 0 requests each predicted
     # address's 128 B line, footprint 1 the 32 lanes 4 B apart from it; none
     # of them is in L1 or in flight before.
     if st.get("footprint") == 1:
         want_sec = {(a + 4 * i) // 32 * 32 for a in want_c for i in range(32)}
     else:
         want_sec = {a // 128 * 128 + 32 * k for a in want_c for k in range(4)}
-    got_sec = {sec for n, _, sec, res in d["pf"] if n == 9 and res == "issued"}
-    check(got_sec == want_sec, "(c) issued sectors (footprint %s) = %s: %s"
+    pf9 = [(sec, res) for n, _, sec, res in d["pf"] if n == 9]
+    got_sec = {sec for sec, _ in pf9}
+    check(got_sec == want_sec and len(pf9) == len(got_sec),
+          "(c) sectors offered to the L1D once each (footprint %s) = %s: %s"
           % (st.get("footprint"), sorted(want_sec), sorted(got_sec)))
+    res9 = {}
+    for _, res in pf9:
+        res9[res] = res9.get(res, 0) + 1
+    print("  info  (c) offered sector outcomes: %s" % res9)
     modes = sorted({(m, a) for m, _, a in d["preds"].get(9, [])})
     print("  info  (c) prediction modes: %s" % modes)
     print("  note  T1/T2 codes: Fig. 15 prints the promoted entry in (b) as '01',"
