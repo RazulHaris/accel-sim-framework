@@ -15,7 +15,9 @@ that differ from the OQ-5 labels; the mapping is printed, not asserted.
 From S3a on (prefetches issued), every run must also finish ("exit
 detected"), wake no warp with a prefetch and keep the outcome invariant
 (snake_pf_invariant OK).  Trace (d) needs coverage_paper >= 90% with the
-exact footprint (-snake_footprint 1; reported for the line footprint), trace
+exact footprint (-snake_footprint 1; reported for the line footprint) and, from
+S3e on, with the inter-warp chain on (-snake_interwarp_chain_depth >= 1; with
+the paper default 0 it is reported only), trace
 (a) is a saturation test (its demand loads fill the L1 miss queue; the
 MISS_QUEUE_FULL failures and the prefetch drops are reported) and trace (b)
 must issue almost nothing (< 1% of its demand sectors).  coverage_pred
@@ -284,11 +286,13 @@ def check_strided_dep(path, p):
     print("== (d) strided loop, one memory wait per iteration: %s" % path)
     st = stats(path)
     cov = check_issue(path, st)
-    if st.get("footprint") == 1:
-        check(cov >= 0.90, "coverage_paper >= 90%% (exact footprint): %.1f%%"
-              % (100 * cov))
+    if st.get("footprint") == 1 and st.get("iw_chain", 0) >= 1:
+        check(cov >= 0.90, "coverage_paper >= 90%% (exact footprint, inter-warp "
+              "chain %d): %.1f%%" % (st["iw_chain"], 100 * cov))
     else:
-        print("  info  coverage_paper with the line footprint: %.1f%%" % (100 * cov))
+        print("  info  coverage_paper (footprint %s, inter-warp chain %s), "
+              "reported only: %.1f%%" % (st.get("footprint"), st.get("iw_chain"),
+                                         100 * cov))
 
 
 def check_random(path, p):

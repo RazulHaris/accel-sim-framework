@@ -24,6 +24,9 @@ OUT=$ACCELSIM/sim_run_snake_synth/$STAGE
 CFG=QV100-SASS-SYNTH_LRR1-SNAKE_DT-SNAKE_DBG
 CFGS=${CFGS:-$CFG,$CFG-SNAKE_FP1}
 FIG15_CFGS=${FIG15_CFGS-$CFG-SNAKE_IWC3}
+# $DEP_CFGS (may be empty) run trace (d) only; from S3e the >= 90% coverage
+# gate applies with the inter-warp chain on (OQ-29), the default reports it.
+DEP_CFGS=${DEP_CFGS-$CFG-SNAKE_FP1-SNAKE_IWC3}
 
 cd "$ACCELSIM"
 for r in . gpu-simulator/gpgpu-sim; do
@@ -46,6 +49,9 @@ python3 util/job_launching/run_simulations.py -B snake-synth -C "$CFGS" -T "$OUT
 [ -z "$FIG15_CFGS" ] || python3 util/job_launching/run_simulations.py \
     -B snake-synth:snake-synth-fig15 -C "$FIG15_CFGS" -T "$OUT/traces" \
     -N snake_synth_${STAGE}_fig15 -r "$OUT/runs" -n >/dev/null
+[ -z "$DEP_CFGS" ] || python3 util/job_launching/run_simulations.py \
+    -B snake-synth:snake-synth-strided-dep -C "$DEP_CFGS" -T "$OUT/traces" \
+    -N snake_synth_${STAGE}_dep -r "$OUT/runs" -n >/dev/null
 find "$OUT/runs" -name justrun.sh -printf '%h\n' | sort | sed "s#^$OUT/runs/##"
 echo "$(find "$OUT/runs" -name justrun.sh | wc -l) runs"
 
@@ -65,5 +71,9 @@ done
 for c in ${FIG15_CFGS//,/ }; do
   echo "######## $c (Fig. 15 only)"
   python3 -I util/snake/check_synthetic.py "$OUT/runs" "$OUT/traces" "$c" snake-synth-fig15 || status=1
+done
+for c in ${DEP_CFGS//,/ }; do
+  echo "######## $c (trace (d) only)"
+  python3 -I util/snake/check_synthetic.py "$OUT/runs" "$OUT/traces" "$c" snake-synth-strided-dep || status=1
 done
 exit $status
