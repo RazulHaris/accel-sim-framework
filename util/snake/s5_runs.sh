@@ -9,7 +9,10 @@
 #            has no sim.out yet, in one pool of [par] (default 15) jobs, each
 #            with its run dir's frozen build; longest workloads first.  A job
 #            with an unfinished sim.out is listed and not re-run.
-# Run from a clean tree on branch Snake (run_apps.sh checks it).
+#            ONLY_CFGS (comma-separated config names) limits the run to those
+#            configs (S5 canary).  Each job also gets time.txt
+#            (/usr/bin/time -v: wall time, peak RSS).
+# Run from a clean tree on branch Snake; dry and run check it (launch gate).
 
 set -euo pipefail
 TIER=${1:?usage: s5_runs.sh <tier1|tier2> <dry|list|run> [parallel]}
@@ -55,12 +58,17 @@ case $MODE in
       DRY=1 util/snake/run_apps.sh "$d" current "$cfgs" | tail -2
     done < <($TIER) ;;
   run)
+    for r in . gpu-simulator/gpgpu-sim; do
+      [ "$(git -C $r branch --show-current)" = Snake ] || { echo "ABORT: $r is not on Snake"; exit 1; }
+      [ -z "$(git -C $r status --porcelain)" ] || { echo "ABORT: $r is dirty"; exit 1; }
+    done
     jobs=$(mktemp)
     while IFS='|' read -r d _; do
       [ -x "$d/bin/accel-sim.out" ] || { echo "ABORT: $d has no dry run"; exit 1; }
       tags="$(strings "$d/bin/accel-sim.out" | grep -o 'accelsim-commit-[^ "]*' | head -1) $(strings "$d/bin/lib/libcudart.so" | grep -o 'gpgpu-sim_git-commit-[^ "]*' | head -1)"
       [ "$(echo "$tags" | grep -o '_modified_0\.0' | wc -l)" = 2 ] || { echo "ABORT: $d build is not _modified_0.0 twice" >&2; exit 1; }
       find "$ACCELSIM/$d/runs" -name justrun.sh -printf '%h\n' | sort | while read -r j; do
+        if [ -n "${ONLY_CFGS:-}" ] && ! echo ",$ONLY_CFGS," | grep -qF ",$(basename "$j"),"; then continue; fi
         if [ ! -e "$j/sim.out" ]; then echo "$ACCELSIM/$d|$j"
         elif ! grep -q 'exit detected' "$j/sim.out"; then echo "UNFINISHED (not re-run): $j" >&2; fi
       done
@@ -73,7 +81,7 @@ case $MODE in
     echo "$(wc -l < "$sorted") jobs to run, $PAR at a time"
     run_job() {  # <run dir>|<job dir>
       local d=${1%%|*} j=${1#*|}
-      cd "$j" && LD_LIBRARY_PATH="$d/bin/lib" "$d/bin/accel-sim.out" \
+      cd "$j" && LD_LIBRARY_PATH="$d/bin/lib" /usr/bin/time -v -o time.txt "$d/bin/accel-sim.out" \
           -config ./gpgpusim.config -trace ./traces/kernelslist.g > sim.out 2>&1
       echo "[done $(date '+%T')] rc=$? ${j#$d/runs/} ($(basename "$d"))"
     }

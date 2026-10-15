@@ -20,7 +20,8 @@ L1 hit rate, the Snake counters used by compare_paper.py, and energy:
   - GPU energy from AccelWattch (accelwattch_power_report.log in the job dir,
     last gpu_tot_avg_power x simulated time) when power simulation was on;
     otherwise empty ("unavailable").
-Exit status 1 if any check fails.
+time.txt (/usr/bin/time -v, written by s5_runs.sh) adds wall_s and
+max_rss_kb.  Exit status 1 if any check fails.
 """
 import csv
 import glob
@@ -80,6 +81,14 @@ def parse_job(job):
                                if sec is not None else None)
     else:
         r["snake_energy_j"] = 0.0
+    tt = os.path.join(job, "time.txt")  # S5: /usr/bin/time -v of the job
+    if os.path.exists(tt):
+        tx = open(tt, errors="replace").read()
+        r["max_rss_kb"] = last(r"Maximum resident set size \(kbytes\): (\d+)", tx, int)
+        el = last(r"Elapsed \(wall clock\) time .*: ([\d:.]+)", tx)
+        if el:
+            parts = [float(x) for x in el.split(":")]
+            r["wall_s"] = sum(v * 60 ** (len(parts) - 1 - i) for i, v in enumerate(parts))
     pw = os.path.join(job, "accelwattch_power_report.log")
     avg = last(r"gpu_tot_avg_power = ([\d.]+)", open(pw, errors="replace").read(),
                float) if os.path.exists(pw) else None
