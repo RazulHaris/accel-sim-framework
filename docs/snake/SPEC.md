@@ -314,6 +314,11 @@ OQ-19…OQ-28 (simulator-specific questions, the decisions on clock, Rodinia ver
   - This is consistent with the paper's §2: "memory-bound GPGPU applications replace deep loops with parallel programming", hence "using intra-warp stride opportunities is unlikely".
 
 ### Observations per stage
+- **S4 (results/S4.md).**
+  - Mode 1 costs hotspot a fifth of its demand L1 hits (32.3 → 25.6–26.0%). Its hits are timely prefetches. Bulk frees evict 19.5k prefetched sectors before use (Snake-DT: 1.3k), close to the 19.0k unused sectors that lost protection when their line flipped on its first demand hit (OQ-12, one flag per line). The 128 KB L1D held hotspot's prefetches without decoupling (S3c).
+  - Throttling is mostly the bandwidth trigger: 1.2–19% of cycles. In lud it cuts issued prefetches by 30%.
+  - The per-launch 50% until-trained cap (OQ-15) holds for 33–53% of cycles in lud and histo.
+  - Snake-ISO (mode 2) keeps Snake-DT's hit rate and accuracy; its buffer rarely overflows.
 - **S3d (results/S3d.md).**
   - With OQ-32 every load at a promoted PC1 gets an inter-thread prediction. 33–57% of loads still get none, all at PCs without a promoted entry.
   - Own-warp inter-thread prefetches are rarely wrong but almost never timely. Timely prefetches come from the inter-warp source and its chain (OQ-29), which also produce most of the wrong ones.

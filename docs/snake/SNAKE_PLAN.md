@@ -34,7 +34,7 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
 | Miss-queue / memory-path config check (no runs) | done | `50570b0` | — | config matches Tab. 1 except L1 latency 20 (28) and L2 ROP latency 160 (212); MISS_QUEUE_FULL causes 71–100% of reservation fails; miss queue stays 16. `docs/snake/results/missq_config_check.md` |
 | S3d promoted strides for all warps (OQ-32) + funnel by source | done | `976937f` (results: `snake: S3d results`) | `97119f36` | synthetic PASS (Fig. 15 unchanged, trace (d) 90.8%); off-regression vs `bin_ref_v2` PASS on 6 (`sim_run_snake_regress/S3d`); 10 runs (`sim_run_snake_gate/S3d`), all invariants OK. `docs/snake/results/S3d.md` |
 | S3e paper defaults: inter-warp chain depth 0, deeper chain steps need bit + trained; PAPER_LAT config | done | `20e968f`, `131a513` (results: `snake: S3e results`) | `53bbfd25` | synthetic PASS (Fig. 15 exact; trace (d) 90.8% under `SNAKE_IWC3`, default 86.0% reported); off-regression vs `bin_ref_v2` PASS on 6 (`sim_run_snake_regress/S3e`); 5 runs (`sim_run_snake_gate/S3e`), all invariants OK; PAPER_LAT calibrated to L2 hit 212.0 (`sim_run_snake_calib`). `docs/snake/results/S3e.md` |
-| S4 throttling + decoupling | implemented; gate results in the follow-up commit | | | |
+| S4 throttling + decoupling; PAPER_LAT L1 knob 23 | **gate stopped** (stop rule) | `f708b4f` (results: `snake: S4 results`) | `57103274` | PAPER_LAT measures L1 28.0 / L2 212.0 (`sim_run_snake_calib/paper_lat23`); synthetic PASS (`sim_run_snake_synth/S4`, 11 runs: Snake-DT runs equal S3e; trace (b) under full Snake throttled 89.4%, 0 issued); off-regression vs `bin_ref_v2` PASS on 6 (`sim_run_snake_regress/S4`); 15 runs (`sim_run_snake_gate/S4`) finish, all invariants OK, no quota assert. **Stop:** mode 1 lowers the demand L1 hit rate vs Snake-DT by > 2% on hotspot (Snake −19.6%, Snake-T −20.6%) and lud (Snake −5.1%); IPC within 2%. `docs/snake/results/S4.md` |
 | S5 sweeps + cleanup | pending | | | |
 
 **Reference build for the off-regression (§9.1), from 2026-10-13:** `/home/razul/snake/bin_ref_v2/` = the clean bases plus the trace-parser fix `fe8f37e` only (cherry-picked as `6c28685` on local branch `snake-ref-v2`; `accelsim-commit-6c28685_modified_0.0`, `gpgpu-sim_git-commit-6c3cf4ff_modified_0.0`; built in the worktree `/home/razul/snake/src_ref_v2`; checksums in its `BUILD_INFO.txt`). See VERSION_DIFF "Pre-756ed33 traces".
@@ -374,6 +374,23 @@ The ablations come from these flags:
   - **Throttling** (SPEC OQ-10, OQ-7): space trigger 50 cycles; bandwidth trigger on the request-slot utilisation of the L1D miss-queue drain over 100-cycle windows, halt at 0.70, resume at 0.50 (`-snake_bw_mode 1`: bytes); while throttled, no issue and chain depth ≤ 1.
   - **Decoupling** (SPEC OQ-12, OQ-15; OQ-22): mode 1 regions, flips, bulk free, transfer rule, L1 cap until trained and while throttled; mode 2 isolated buffer; mode 0 unchanged (Snake-DT). The S3 override that forced modes 0 and no throttling is removed; the defaults are now full Snake (mode 1 + throttle).
   - **Gate plan:** synthetic (Fig. 15 and trace (d) under the S3e configs; trace (b) under full Snake: throttled > 50%, `pf_issued`/demand < 10%); off-regression vs `bin_ref_v2` (6, ref cached from S2c); apps hotspot 512, srad_v1, mri-q, lud 512, histo × {Snake, Snake-T, Snake-ISO}, exact footprint, 100M (15 runs, `sim_run_snake_gate/S4`), Snake-DT reused from S3e; stop if mode 1 lowers the demand L1 hit rate or IPC by more than 2% vs Snake-DT. Report: `util/snake/s4_report.py`.
+  - **Implemented 2026-10-15.** gpgpu-sim `57103274`; accel-sim `f708b4f` (docs, tooling, `PAPER_LAT` L1 knob 23).
+  - **Gates** (33 runs: 1 calibration, 11 synthetic, 6 off-regression, 15 apps):
+    - PAPER_LAT: L1 hit 28.0, L2 hit 212.0 cycles.
+    - Synthetic PASS. The 10 Snake-DT runs equal S3e (cycles, instructions, issued, timely, late, matched). Trace (b) under full Snake is throttled 89.4% of its cycles (bandwidth trigger) and issues 0 of 20,480 demand sectors.
+    - Off-regression PASS on 6.
+    - Apps: all 15 finish; `pf_woken_warps` 0; every invariant OK; no quota assert fired, 0 fallbacks.
+    - **Stop rule fired:** mode 1 lowers the demand L1 hit rate by more than 2% (relative) vs Snake-DT on hotspot (Snake 32.3 → 26.0, −19.6%; Snake-T −20.6%) and lud (Snake 8.4 → 8.0, −5.1%). IPC is within 2% of Snake-DT on every app.
+  - **Findings** (results/S4.md §6):
+    - hotspot: bulk frees evict 19.5k prefetched sectors before use (Snake-DT: 1.3k), which costs 11.4k timely hits. 19.0k unused sectors lost protection when their line flipped on its first demand hit (OQ-12).
+    - lud: throttling (19% of cycles) cuts issued prefetches by 30% and timely sectors by 14%.
+    - The 50% until-trained cap holds 33–53% of cycles in lud and histo.
+    - Snake-ISO keeps Snake-DT's hit rate and accuracy.
+    - Snake-DT < Snake-T ≤ Snake holds only for histo (accuracy).
+  - **Deviations:**
+    - `pf_drop_throttled` renamed `pf_held_throttled`, since nothing is dropped.
+    - Synthetic trace (b) runs under full Snake as an extra synthetic config (`$RAND_CFGS`); one run.
+  - **Stopped here** by the stop rule; S4 is not done.
 - **S5 Sweep hooks + cleanup.** Sweep configs for Tail {10, 20, 40, ∞}, eviction policy, throttle {25…300} (Figs. 20, 22, 23), the prefetch queue size and issue width (OQ-4, added in S3a; defaults 32 lines and 1 line per cycle stay until then) and `snake_missq_reserve` (OQ-11, default 8); `compare_paper.py`; docs updated.
   - *Done when:* the sweep run dirs generate and the plots/tables are reproducible.
 
