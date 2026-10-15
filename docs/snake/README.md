@@ -108,4 +108,10 @@ Gates:
 - **§5.7 target missed** on hotspot (hit rate 26.6 vs ISO 32.5 and DT 32.3) and lud (8.2 vs DT 8.4, −3.0%). It is met on histo, mri-q and srad_v1. hotspot's prefetches are used ~900 cycles after issue, so the 50-cycle staleness frees them; lud's gap is throttling.
 - Variant 1 is kept; the gap is in SPEC §8. Tables: `results/S4.md` (S4b).
 
-**Next:** your decision on the remaining mode-1 gap, then S5.
+**S5 (in progress): final-evaluation configs and tooling, nothing launched.**
+- Tier 1: 21 configs (189 runs); Tier 2: 13 configs (117 runs); 1B instructions, 9 workloads (SNAKE_PLAN §8 S5).
+- Tools: `util/snake/s5_runs.sh`, `collect_results.py`, `compare_paper.py`, `s5_estimate.py`.
+- SPEC §8 records the hotspot timing discrepancy (897-cycle median use vs the paper's 50) and lud's request-slot throttling.
+- Dry-run and cost estimate follow in the results commit.
+
+**Next:** S5 dry-run, then your approval to launch Tier 1.

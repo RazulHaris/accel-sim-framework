@@ -153,6 +153,7 @@ Format: interpretation (confidence).
   - Expose `snake_head_entries` = 32 as the capacity of (b). (low)
 - **OQ-2 Field widths.** Use 64-bit addresses and strides in the simulator, since Accel-Sim addresses are 64-bit. Report the paper's 32-bit storage figure unchanged. (medium)
 - **OQ-3 Tail eviction.** "LRU group" = the `snake_tail_lru_group` (default 3) least-recently-used entries; evict the one with the fewest set bits. Paper silent on group size. (low)
+  - **"Unlimited" Tail (Fig. 20; S5, 2026-10-15):** `-snake_tail_entries 1024` (config `SNAKE_TAILINF`). The Tail is cleared at every kernel switch (OQ-19). The most Tail allocations per SM-launch in our 100M runs average 449 (backprop; ≈ 620 over its full 137M instructions). So 1,024 entries rarely evict, without changing the code. (decided)
 - **OQ-4 Prefetch queue.** **Revised 2026-10-13 (S3a): one entry per 128 B line**, the paper's prefetch unit (Fig. 15 lists one address per warp).
   - `snake_queue_size` = 32 line entries, FIFO.
     - A predicted line already queued absorbs the new sectors; sectors already pending count as `pf_dup_queue`.
@@ -262,6 +263,11 @@ Format: interpretation (confidence).
     - **Step-1 data (S4b, variant 0; results/S4.md S4b.1).** SM-launches that promote take a p50 of 57–655 Snake cycles to do so (max 941). Most cap time is in SM-launches that never promote: lud 93%, histo 94%, srad_v1 79% of their cap cycles. The cap was active 33% (lud), 53% (histo) and 16% (srad_v1) of Snake cycles. It is re-armed only when an SM starts a launch (0 switches back to a launch, never on demotion). Variant 1 cuts it to 0.1–0.3%.
     - Diagnosis counters (both variants): `snake_dist_launch_to_promotion` (Snake cycles from an SM's launch start to its first promotion), `snake_sm_launches_no_promo`, `snake_untrained_cycles_promoted` / `_never` (untrained cycles of launches that do / do not promote), `snake_kernel_switch_revisit` (an SM switching back to a launch it ran before, which would re-arm the cap within a launch). (decided)
 - **OQ-16 Energy.** AccelWattch is not modified. Add Snake energy offline: accesses × 6.4 pJ + 6 mW × time, from Snake stats. (medium)
+  - **Implemented (S5, `util/snake/collect_results.py`):**
+    - Snake energy = accesses × `-snake_energy_pj_per_access` (6.4 pJ) + `-snake_static_mw` (6 mW) × SMs (80) × simulated time (`gpu_tot_sim_cycle` / core clock).
+    - Accesses = Head updates + Tail look-ups + prediction steps (`snake_head_updates` + `snake_tail_lookups` + `snake_pred_*`), one table access each.
+    - Normalized energy (Fig. 19) = (GPU energy with Snake + Snake energy) / baseline GPU energy. GPU energy = AccelWattch's last `gpu_tot_avg_power` (`accelwattch_power_report.log`) × simulated time.
+    - **Unavailable in our configs:** the QV100 config runs with `-power_simulation_enabled 0`, so no AccelWattch output exists. `compare_paper.py` then reports Snake's own energy and "unavailable" for Fig. 19. Turning AccelWattch on for the final runs would be a new config token (not in Tier 1 or 2). (decided)
 - **OQ-17 Which warps Snake uses (lane check).** **Decided 2026-10-13: a deliberate deviation from §3.4, selected by `-snake_lane_mode`.**
   - **Why.** §3.4 says the inter-lane strides of a warp are "consistently equal" and excludes warps where they are not. In the local Rodinia traces this is false for 2-D thread blocks. With 16×16 blocks each warp covers two 16-lane rows, e.g. backprop PC 0x180 has lane deltas 4 ×15, 8, 4 ×15. The paper-literal rule excluded 100% of hotspot's and 99.1% of backprop's eligible loads in the S2 gate, so neither trains, yet the paper reports ~88% and ~83% coverage for them (Fig. 16).
   - **Lane mode 0 (paper-literal, §3.4).** Lanes = active lanes only. A load is used only if every active lane is the same distance per lane index from its predecessor; a single active lane has stride 0. `-snake_require_equal_lane_stride 0` disables the check (mode 0 only). The footprint follows OQ-9.
@@ -330,6 +336,8 @@ OQ-19…OQ-28 (simulator-specific questions, the decisions on clock, Rodinia ver
 - **hotspot.** Its demand hits are timely prefetches, used a p50 of 897 cycles (p90 1,699) after issue. The 50-cycle staleness of §3.2 ("typically, the data is consumed within 50 cycles") marks them stale long before use. 9.7k stale prefetched lines are freed with 15.6k unused sectors. The paper's GPU likely consumed prefetches sooner. In ours, inter-warp lookahead runs far ahead of demand (S3c), and the 128 KB L1D held hotspot's prefetches without any decoupling.
 - **lud.** The gap is throttling, not decoupling: Snake-T v1 is within 1% of Snake-DT. Throttling holds issue for 19% of cycles and cuts issued prefetches by 30%.
 - Per the S4b decision, variant 1 is kept and no further revision was made.
+- **Paper-vs-simulator timing discrepancy (recorded in S5).** In hotspot, useful prefetches are used a median of **897 cycles** after issue (p90 1,699; `snake_dist_lead_issue_inter_warp_timely`, S4b). The paper says prefetched data is "typically consumed within 50 cycles" (§3.2, footnote 3). The 50-cycle stale rule (OQ-12, variant 1) therefore evicts good prefetches in our simulator. This is a timing discrepancy between the paper and our simulator, not a fault in the rule. Tier 2 measures `-snake_pf_stale_cycles` 200 and 1000.
+- **lud's remaining §5.7 miss comes from request-slot throttling** (OQ-10): Snake-T is within 1% of Snake-DT, and throttling cuts issued prefetches by 30%. Tier 2 measures the bytes-based meter (`SNAKE_BWBYTES`).
 
 ### Observations per stage
 - **S4 (results/S4.md).**

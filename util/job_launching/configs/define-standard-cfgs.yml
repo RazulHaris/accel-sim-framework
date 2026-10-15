@@ -287,6 +287,62 @@ SNAKE_PAW0:
 SNAKE_DV0:
     extra_params: "-snake_decouple_variant 0"
 
+# Fig. 20/22 sweep: Tail entries (default 10).
+SNAKE_TAIL20:
+    extra_params: "-snake_tail_entries 20"
+SNAKE_TAIL40:
+    extra_params: "-snake_tail_entries 40"
+
+# "Unlimited" Tail (Fig. 20): 1024 entries, above any SM's allocations
+# within one kernel launch in our runs (SPEC OQ-3, S5).
+SNAKE_TAILINF:
+    extra_params: "-snake_tail_entries 1024"
+
+# Fig. 22: Tail eviction by warpID popcount only (default lru_popcount).
+SNAKE_EVPOP:
+    extra_params: "-snake_tail_evict popcount"
+
+# Fig. 23 sweep: space-throttle halt in cycles (default 50).
+SNAKE_THR25:
+    extra_params: "-snake_throttle_space_cycles 25"
+SNAKE_THR75:
+    extra_params: "-snake_throttle_space_cycles 75"
+SNAKE_THR100:
+    extra_params: "-snake_throttle_space_cycles 100"
+SNAKE_THR150:
+    extra_params: "-snake_throttle_space_cycles 150"
+SNAKE_THR200:
+    extra_params: "-snake_throttle_space_cycles 200"
+SNAKE_THR300:
+    extra_params: "-snake_throttle_space_cycles 300"
+
+# S5 Tier 2, sensitivity to our interpretations (one change each).
+# Inter-warp targets per load (OQ-8, default 4).
+SNAKE_IWD1:
+    extra_params: "-snake_interwarp_degree 1"
+SNAKE_IWD2:
+    extra_params: "-snake_interwarp_degree 2"
+SNAKE_IWD8:
+    extra_params: "-snake_interwarp_degree 8"
+
+# Stale age of unused prefetched data, variant 1 (OQ-12, default 50).
+SNAKE_STALE200:
+    extra_params: "-snake_pf_stale_cycles 200"
+SNAKE_STALE1000:
+    extra_params: "-snake_pf_stale_cycles 1000"
+
+# Bandwidth meter in data bytes instead of request slots (OQ-10).
+SNAKE_BWBYTES:
+    extra_params: "-snake_bw_mode 1"
+
+# Prefetch queue lines (OQ-4, default 32).
+SNAKE_Q64:
+    extra_params: "-snake_queue_size 64"
+
+# Prefetch lines issued per cycle (OQ-4, default 1).
+SNAKE_ISSUE2:
+    extra_params: "-snake_issue_width 2"
+
 # One LRR scheduler per SM without the sub-core model, so the warps of a CTA
 # issue strictly round robin, as in the paper's Fig. 15 example.
 SYNTH_LRR1:

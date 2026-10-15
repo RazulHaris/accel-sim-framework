@@ -411,6 +411,26 @@ The ablations come from these flags:
     - The step-1 runs went to `S4b_diag` instead of `S4b`, since `run_apps.sh` refuses an existing runs dir and they had to be checked before the gate runs.
     - The first gate launch was refused (dirty tree: an uncommitted report-script edit), so nothing ran. The script was committed (`d06395d`) and the same 10 runs were launched on the same frozen build.
 - **S5 Sweep hooks + cleanup.** Sweep configs for Tail {10, 20, 40, ∞}, eviction policy, throttle {25…300} (Figs. 20, 22, 23), the prefetch queue size and issue width (OQ-4, added in S3a; defaults 32 lines and 1 line per cycle stay until then) and `snake_missq_reserve` (OQ-11, default 8); `compare_paper.py`; docs updated.
+  - **S5 as run (2026-10-15): final-evaluation configs and tooling; nothing launched.** All configs are on `QV100-SASS-PAPER_V100-1B_INSN` with the 9 workloads (7 apps) of `run_apps.sh`. Configs that coincide are listed once: Snake exact = Tail 10 = lru_popcount at Tail 10 = throttle 50 = the Tier 2 reference. `util/snake/s5_runs.sh <tier> list|dry|run` holds the lists.
+    - **Tier 1 (21 configs, 189 runs):**
+      - `sim_run_baseline`: baseline; PAPER_LAT baseline
+      - `sim_run_snake`: Snake exact (`SNAKE-SNAKE_FP1`); Snake line (`SNAKE`); Snake-ISO; PAPER_LAT Snake exact
+      - `sim_run_snake_dt`, `sim_run_snake_t`, `sim_run_ssnake`: Snake-DT, Snake-T, s-Snake (exact)
+      - `sim_run_snake_sweep_tail`: Tail 20, 40, ∞ (1024; SPEC OQ-3)
+      - `sim_run_snake_sweep_evict`: popcount at Tail 10, 20, 40
+      - `sim_run_snake_sweep_throttle`: space halt 25, 75, 100, 150, 200, 300
+    - **Tier 2 (13 configs, 117 runs), each one change from Snake exact:**
+      - `sim_run_snake_sens`: interwarp_degree 1, 2, 8; missq_reserve 4; pf_stale_cycles 200, 1000; bandwidth in bytes; interwarp_chain_depth 3; decouple_variant 0; queue_size 64; issue_width 2 (the last two as separate configs)
+      - `sim_run_baseline_1132`, `sim_run_snake_1132`: the 1132 MHz pair
+    - **New config tokens:** `SNAKE_TAIL20/40/INF`, `SNAKE_EVPOP`, `SNAKE_THR25/75/100/150/200/300`, `SNAKE_IWD1/2/8`, `SNAKE_STALE200/1000`, `SNAKE_BWBYTES`, `SNAKE_Q64`, `SNAKE_ISSUE2`.
+    - **Tooling:**
+      - `run_apps.sh`: `DRY=1` (generate the jobs and freeze the build, launch nothing) and `RESUME=1`
+      - `s5_runs.sh`: tier lists; dry-run; one longest-first pool per tier that never re-runs a job with a sim.out
+      - `collect_results.py`: per-job CSV; fails a job whose build tags are not `_modified_0.0` or differ within a run dir, or that did not finish or broke an invariant; energy per SPEC OQ-16
+      - `compare_paper.py`: SPEC §5 table, Fig. 25 L1 hit rate, ablations, Figs. 20/22/23, Tier 2
+      - `s5_estimate.py`: cost estimate
+    - Energy: AccelWattch is off in our configs, so Fig. 19's normalized energy is reported as unavailable, with Snake's own energy (SPEC OQ-16).
+    - Dry-run and estimate: in the S5 results commit.
   - *Done when:* the sweep run dirs generate and the plots/tables are reproducible.
 
 ## 9. Verification
@@ -435,7 +455,7 @@ The ablations come from these flags:
    - Every gap >10 pp is explained against the VERSION_DIFF list and the OQs.
 
 ## 10. Experiment layout
-- **Run dirs (new only; verified that none exist today):** `sim_run_baseline`, `sim_run_snake`, `sim_run_snake_dt`, `sim_run_snake_t`, `sim_run_ssnake`, `sim_run_snake_sweep_{tail,evict,throttle}`, `sim_run_snake_regress`, `sim_run_snake_synth`, `sim_run_snake_train`, `sim_run_snake_refcmp`, `sim_run_snake_gate`, `sim_run_snake_refcache`, `sim_run_baseline_1132`, `sim_run_snake_1132`, `sim_run_snake_calib` (S3e latency calibration).
+- **Run dirs (new only; verified that none exist today):** `sim_run_baseline`, `sim_run_snake`, `sim_run_snake_dt`, `sim_run_snake_t`, `sim_run_ssnake`, `sim_run_snake_sweep_{tail,evict,throttle}`, `sim_run_snake_sens` (S5 Tier 2), `sim_run_snake_regress`, `sim_run_snake_synth`, `sim_run_snake_train`, `sim_run_snake_refcmp`, `sim_run_snake_gate`, `sim_run_snake_refcache`, `sim_run_baseline_1132`, `sim_run_snake_1132`, `sim_run_snake_calib` (S3e latency calibration).
 - **Never** touch existing `sim_run_*`, `hw_run/` or traces. The traces are read-only `-T` inputs.
 
 ```bash
