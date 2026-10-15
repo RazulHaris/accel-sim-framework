@@ -97,4 +97,6 @@ Updated with every stage. A stage's gate results and its own commit hashes go in
 - `sim_run_snake_gate/<stage>`: real-workload gate runs, from S3a on.
 - `sim_run_snake_refcache/bin_ref_v2`: cached baseline outputs.
 
-**Next:** your decision on the S4 stop (mode 1 hit-rate loss on hotspot and lud), then S5.
+**S4b (in progress):** a revised reading of mode 1 (`-snake_decouple_variant 1`, default; 0 = S4): untrained cap ≤ 10 cycles per launch, stale-only prefetch-side bulk free, sector-aware flip (SPEC OQ-12, OQ-15). Step 1 diagnoses the S4 cap with new counters. Gates pending.
+
+**Next:** the S4b gates, then S5.

@@ -233,6 +233,9 @@ Budget with Snake on: **≤15% slower** simulation. With Snake off: **within run
 | `snake_free_frac` | float | 0.25 | §3.2, footnote 2 |
 | `snake_transfer_frac` | float | 0.80 | §3.2 |
 | `snake_isolated_lines` | uint | 256 | mode 2 size (32 KB; §5.7 gives no size → OQ-22) |
+| `snake_decouple_variant` | uint | 1 | mode 1 reading: 0 = S4 literal, 1 = revised (S4b; OQ-12, OQ-15); token `SNAKE_DV0` |
+| `snake_untrained_cycles` | uint | 10 | variant 1: untrained cap length per kernel launch (§3.2, §3.5; OQ-15) |
+| `snake_pf_stale_cycles` | uint | 50 | variant 1: unused prefetched data older than this is stale (§3.2, footnote 3; OQ-12) |
 | `snake_energy_pj_per_access` / `snake_static_mw` | float | 6.4 / 6.0 | §5.5 (offline energy) |
 | `snake_debug_trace` | bool | 0 | per-event log for tests |
 
@@ -391,6 +394,10 @@ The ablations come from these flags:
     - `pf_drop_throttled` renamed `pf_held_throttled`, since nothing is dropped.
     - Synthetic trace (b) runs under full Snake as an extra synthetic config (`$RAND_CFGS`); one run.
   - **Stopped here** by the stop rule; S4 is not done.
+- **S4b Revised mode 1** (2026-10-15, after the S4 stop; agreed: mode 1 as in S4 contradicts §5.7).
+  - **Step 1:** diagnose the 50%-until-trained cap with new counters (launch → first promotion, launches never promoting, cap cycles split, re-arms); 5 variant-0 Snake re-runs, since the S4 outputs lack these counts. A re-arm at any time other than a kernel launch is a bug, fixed in a separate commit.
+  - **Step 2:** `-snake_decouple_variant` 0 = S4, 1 = revised (default): untrained cap ≤ 10 cycles per launch; the prefetch side of a bulk free gives only stale lines (> 50 cycles), the rest from the L1 side; a line flips only when none of its prefetched sectors is fresh (SPEC OQ-12, OQ-15).
+  - **Gate:** synthetic (Fig. 15, trace (d), trace (b)); off-regression; 10 runs: hotspot 512, srad_v1, mri-q, lud 512, histo × Snake and Snake-T, variant 1, exact footprint, 100M (`sim_run_snake_gate/S4b`); S4's Snake-ISO and S3e's Snake-DT reused. Target (§5.7): variant 1 Snake's demand L1 hit rate within 5 points of Snake-ISO and no more than 2% below Snake-DT on every app. If missed, keep variant 1, record the gap in SPEC §8 and stop. Report: `util/snake/s4b_report.py`.
 - **S5 Sweep hooks + cleanup.** Sweep configs for Tail {10, 20, 40, ∞}, eviction policy, throttle {25…300} (Figs. 20, 22, 23), the prefetch queue size and issue width (OQ-4, added in S3a; defaults 32 lines and 1 line per cycle stay until then) and `snake_missq_reserve` (OQ-11, default 8); `compare_paper.py`; docs updated.
   - *Done when:* the sweep run dirs generate and the plots/tables are reproducible.
 

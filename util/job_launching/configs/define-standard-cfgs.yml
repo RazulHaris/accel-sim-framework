@@ -281,6 +281,12 @@ SNAKE_IWW0:
 SNAKE_PAW0:
     extra_params: "-snake_promoted_all_warps 0"
 
+# The S4 reading of decoupling mode 1 (OQ-12, OQ-15): untrained cap until the
+# first promotion, any prefetched line freed from the prefetch side, one flag
+# per line.  The default from S4b is the revised variant 1.
+SNAKE_DV0:
+    extra_params: "-snake_decouple_variant 0"
+
 # One LRR scheduler per SM without the sub-core model, so the warps of a CTA
 # issue strictly round robin, as in the paper's Fig. 15 example.
 SYNTH_LRR1:
