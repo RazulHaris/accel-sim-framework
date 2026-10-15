@@ -68,7 +68,7 @@ Updated with every stage. A stage's gate results and its own commit hashes go in
 - lud 512 line raises demand MISS_QUEUE_FULL by 29% (the exact footprint lowers it).
 - The eviction weight (OQ-30) does not help backprop: every entry there holds an inter-warp stride. srad_v1's such evictions fall by ~25%.
 
-**In progress:** S4, throttling and decoupling. **The gate stopped:** the stop rule fired (SNAKE_PLAN §8, `results/S4.md`).
+**S4, throttling and decoupling: the gate stopped** (stop rule; SNAKE_PLAN §8, `results/S4.md`). Mode 1 was revised in S4b below.
 - **Implemented** (accel-sim `f708b4f`, gpgpu-sim `57103274`):
   - the space and bandwidth triggers (request slots of the L1D miss-queue drain, OQ-10)
   - the chain cap while throttled (OQ-7)
@@ -97,6 +97,15 @@ Updated with every stage. A stage's gate results and its own commit hashes go in
 - `sim_run_snake_gate/<stage>`: real-workload gate runs, from S3a on.
 - `sim_run_snake_refcache/bin_ref_v2`: cached baseline outputs.
 
-**S4b (in progress):** a revised reading of mode 1 (`-snake_decouple_variant 1`, default; 0 = S4): untrained cap ≤ 10 cycles per launch, stale-only prefetch-side bulk free, sector-aware flip (SPEC OQ-12, OQ-15). Step 1 diagnoses the S4 cap with new counters. Gates pending.
+**S4b (done, target missed):** a revised reading of mode 1, `-snake_decouple_variant 1` (the default; 0 = S4). Code: gpgpu-sim `3f635b67`; accel-sim `7af4b95`, `d06395d`. The rules (SPEC OQ-12, OQ-15):
+- the untrained cap lasts at most 10 cycles per launch
+- the prefetch side of a bulk free gives only stale lines
+- the flip is sector-aware
 
-**Next:** the S4b gates, then S5.
+Gates:
+- Synthetic PASS; off-regression PASS (6); 15 runs, all invariants OK; variant 0 equals S4.
+- **Step 1:** the cap re-arms only at an SM's launch start (no bug). 79–94% of the cap time in lud, histo and srad_v1 comes from SM-launches that never promote. Variant 1 cuts the cap from up to 53% of cycles to 0.1–0.3%.
+- **§5.7 target missed** on hotspot (hit rate 26.6 vs ISO 32.5 and DT 32.3) and lud (8.2 vs DT 8.4, −3.0%). It is met on histo, mri-q and srad_v1. hotspot's prefetches are used ~900 cycles after issue, so the 50-cycle staleness frees them; lud's gap is throttling.
+- Variant 1 is kept; the gap is in SPEC §8. Tables: `results/S4.md` (S4b).
+
+**Next:** your decision on the remaining mode-1 gap, then S5.

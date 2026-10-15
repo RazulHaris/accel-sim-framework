@@ -122,7 +122,8 @@ def main():
             short(k[0]), "%.1f" % hit(r) if r else "-", " | ".join(cells),
             "-" if t1 is None else ("yes (%+.1f)" % (hit(s1) - hit(iso)) if t1 else "**no** (%+.1f)" % (hit(s1) - hit(iso))),
             "-" if t2 is None else ("yes" if t2 else "**no**") + (" (%+.2f%%)" % ((hit(s1) / hit(dt) - 1) * 100) if hit(dt) else "")))
-    print("\nTarget %s on every app (%d miss(es))." % ("met" if not miss else "**missed**", miss))
+    print("\nTarget met on every app." if not miss else
+          "\nTarget **missed**: %d check(s) failed (marked **no**)." % miss)
 
     print("\n## Decoupling counters, variants 0 and 1\n")
     print("Bulk-free victims in lines (L1 region / stale prefetched / fresh prefetched); "

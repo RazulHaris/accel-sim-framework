@@ -231,6 +231,7 @@ Format: interpretation (confidence).
     - **Bulk free, "older prefetched data entries".** §3.2 says "typically, the data is consumed within 50 cycles" (footnote 3), so older means unused for more than `-snake_pf_stale_cycles` (50). A prefetch-region line is stale when it has had no activity (allocation, prefetch fill, demand access) for more than 50 cycles. When the 80% rule picks the prefetch side, only stale prefetched lines are freed, by LRU of that activity. If fewer than 25% are stale, the rest comes from the L1 side, by LRU. When it picks the L1 side, L1 lines are freed as before. Fresh prefetched lines are freed only if nothing else can be (`snake_bulk_free_lines_pf_fresh`).
     - **Sector-aware flip.** The paper's per-entry flag ignores sectors. A line now moves to the L1 region only when none of its prefetched sectors is still fresh, i.e. each has been demanded, or was filled more than 50 cycles ago, and none is still in flight. Until then the line stays in the prefetch region, so its unused prefetched sectors stay protected (`snake_flips_deferred`). A deferred line flips at a later demand access that finds no fresh sector; until then it leaves only by a bulk free (once stale) or an invalidation.
     - Counters: bulk-free victims by side (`snake_bulk_free_lines_l1`, `_pf_stale`, `_pf_fresh`), unused prefetched sectors evicted from prefetch-region lines (`snake_evict_pf_protected`) or from L1-region lines (`snake_evict_pf_unprotected`). (decided)
+    - **Result (S4b):** the sector-aware flip works: unused sectors evicted from L1-region lines fall to ≤ 253 per run. But the 50-cycle staleness frees prefetched lines that are used later: hotspot's timely inter-warp prefetches are used a p50 of 897 cycles after issue. The §5.7 target is missed on hotspot and lud (§8).
 - **OQ-13 Inputs and traces.**
   - Use Accel-Sim's default `define-all-apps.yml` arguments.
   - Rodinia version: paper unstated. Local traces exist for both 2.0-ft (srad_v2) and 3.1 (srad_v1).
@@ -258,6 +259,7 @@ Format: interpretation (confidence).
   - **Confinement while throttled (§3.2):** the same cap applies from the start of each throttle episode for at most `snake_throttle_confine_cycles` (50) cycles. Cycles under each cap: `snake_l1_cap_cycles_untrained` and `_confine`. (decided)
   - **Revised (S4b, 2026-10-15), `-snake_decouple_variant 1`:** the untrained cap lasts at most `-snake_untrained_cycles` (10) Snake cycles of each kernel launch on an SM, or until the first promotion if that is earlier.
     - **Why.** §3.2 gives training "an average of 3 cycles (up to 10 cycles)", and §3.5 "the designated 10-cycle period, which represents the maximum required time for training Snake". A pattern confirmed across 3 warps cannot take 10 cycles, so these must be the table-update pipeline time. Tying "trained" to the first promotion, as variant 0 does, keeps the cap on for hundreds of cycles or more, and again at every launch (step-1 data: results/S4.md, S4b).
+    - **Step-1 data (S4b, variant 0; results/S4.md S4b.1).** SM-launches that promote take a p50 of 57–655 Snake cycles to do so (max 941). Most cap time is in SM-launches that never promote: lud 93%, histo 94%, srad_v1 79% of their cap cycles. The cap was active 33% (lud), 53% (histo) and 16% (srad_v1) of Snake cycles. It is re-armed only when an SM starts a launch (0 switches back to a launch, never on demotion). Variant 1 cuts it to 0.1–0.3%.
     - Diagnosis counters (both variants): `snake_dist_launch_to_promotion` (Snake cycles from an SM's launch start to its first promotion), `snake_sm_launches_no_promo`, `snake_untrained_cycles_promoted` / `_never` (untrained cycles of launches that do / do not promote), `snake_kernel_switch_revisit` (an SM switching back to a launch it ran before, which would re-arm the cap within a launch). (decided)
 - **OQ-16 Energy.** AccelWattch is not modified. Add Snake energy offline: accesses × 6.4 pJ + 6 mW × time, from Snake stats. (medium)
 - **OQ-17 Which warps Snake uses (lane check).** **Decided 2026-10-13: a deliberate deviation from §3.4, selected by `-snake_lane_mode`.**
@@ -319,6 +321,15 @@ OQ-19…OQ-28 (simulator-specific questions, the decisions on clock, Rodinia ver
   - We run 100M instructions instead of 1B, and the inputs may differ (OQ-13).
 - **Intra-warp barely fires** in all five apps: 0–45 intra-warp predictions and 0–181 trained T2 strides per run, against 5k–155k observed loads (results/S3e.md).
   - This is consistent with the paper's §2: "memory-bound GPGPU applications replace deep loops with parallel programming", hence "using intra-warp stride opportunities is unlikely".
+
+### Remaining gap after S4b (decoupling mode 1, variant 1; results/S4.md S4b)
+- **Target (§5.7):** decoupled Snake's demand L1 hit rate within 5 points of Isolated-Snake and no more than 2% below Snake-DT. Variant 1 misses it on two apps:
+  - **hotspot**: 26.6% vs Snake-ISO 32.5% and Snake-DT 32.3% (−6.0 pts, −17.7%)
+  - **lud**: 8.2% vs Snake-DT 8.4% (−3.0%)
+  - It holds on histo, mri-q and srad_v1.
+- **hotspot.** Its demand hits are timely prefetches, used a p50 of 897 cycles (p90 1,699) after issue. The 50-cycle staleness of §3.2 ("typically, the data is consumed within 50 cycles") marks them stale long before use. 9.7k stale prefetched lines are freed with 15.6k unused sectors. The paper's GPU likely consumed prefetches sooner. In ours, inter-warp lookahead runs far ahead of demand (S3c), and the 128 KB L1D held hotspot's prefetches without any decoupling.
+- **lud.** The gap is throttling, not decoupling: Snake-T v1 is within 1% of Snake-DT. Throttling holds issue for 19% of cycles and cuts issued prefetches by 30%.
+- Per the S4b decision, variant 1 is kept and no further revision was made.
 
 ### Observations per stage
 - **S4 (results/S4.md).**
