@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Snake S4b tables (docs/snake/results/S4.md, S4b sections).
 
-    s4b_report.py <S4b runs> <S4 runs> <Snake-DT runs> <reference runs>
-                  [<reference config>]
+    s4b_report.py <S4b runs> <S4b diag runs> <S4 runs> <Snake-DT runs>
+                  <reference runs> [<reference config>]
 
 Runs, by config (exact footprint, 100M):
-  S4b: SNAKE-SNAKE_FP1-SNAKE_DV0 (Snake, variant 0, with the S4b counters),
-       SNAKE-SNAKE_FP1 and SNAKE_T-SNAKE_FP1 (variant 1, the default)
+  S4b: SNAKE-SNAKE_FP1 and SNAKE_T-SNAKE_FP1 (variant 1, the default)
+  S4b diag: SNAKE-SNAKE_FP1-SNAKE_DV0 (Snake, variant 0, with the S4b
+       counters)
   S4:  SNAKE_ISO-SNAKE_FP1, SNAKE_T-SNAKE_FP1 (Snake-T variant 0) and
        SNAKE-SNAKE_FP1 (Snake variant 0, S4 build: identity check)
   Snake-DT: SNAKE_DT-SNAKE_FP1 (S3e)
@@ -26,10 +27,10 @@ from s4_report import parse, pct, hit, short  # noqa: E402
 
 FP = "QV100-SASS-PAPER_V100-100M_INSN-"
 WHERE = [  # label, run-dir index, config suffix
-    ("S0", 0, "SNAKE-SNAKE_FP1-SNAKE_DV0"), ("S1", 0, "SNAKE-SNAKE_FP1"),
-    ("T1", 0, "SNAKE_T-SNAKE_FP1"), ("ISO", 1, "SNAKE_ISO-SNAKE_FP1"),
-    ("T0", 1, "SNAKE_T-SNAKE_FP1"), ("S0_S4", 1, "SNAKE-SNAKE_FP1"),
-    ("DT", 2, "SNAKE_DT-SNAKE_FP1")]
+    ("S0", 1, "SNAKE-SNAKE_FP1-SNAKE_DV0"), ("S1", 0, "SNAKE-SNAKE_FP1"),
+    ("T1", 0, "SNAKE_T-SNAKE_FP1"), ("ISO", 2, "SNAKE_ISO-SNAKE_FP1"),
+    ("T0", 2, "SNAKE_T-SNAKE_FP1"), ("S0_S4", 2, "SNAKE-SNAKE_FP1"),
+    ("DT", 3, "SNAKE_DT-SNAKE_FP1")]
 NAMES = {"S0": "Snake v0", "S1": "Snake v1", "T0": "Snake-T v0", "T1": "Snake-T v1",
          "ISO": "Snake-ISO", "DT": "Snake-DT"}
 
@@ -41,9 +42,9 @@ def dist(path, name):
 
 
 def main():
-    dirs = sys.argv[1:4]
-    ref = sys.argv[4]
-    rcfg = sys.argv[5] if len(sys.argv) > 5 else "QV100-SASS-PAPER_V100-100M_INSN"
+    dirs = sys.argv[1:5]
+    ref = sys.argv[5]
+    rcfg = sys.argv[6] if len(sys.argv) > 6 else "QV100-SASS-PAPER_V100-100M_INSN"
     apps, paths = {}, {}
     for lab, d, suf in WHERE:
         for p in glob.glob(os.path.join(dirs[d], "*", "*", FP + suf, "sim.out")):
