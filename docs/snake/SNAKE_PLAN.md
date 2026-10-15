@@ -36,7 +36,7 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
 | S3e paper defaults: inter-warp chain depth 0, deeper chain steps need bit + trained; PAPER_LAT config | done | `20e968f`, `131a513` (results: `snake: S3e results`) | `53bbfd25` | synthetic PASS (Fig. 15 exact; trace (d) 90.8% under `SNAKE_IWC3`, default 86.0% reported); off-regression vs `bin_ref_v2` PASS on 6 (`sim_run_snake_regress/S3e`); 5 runs (`sim_run_snake_gate/S3e`), all invariants OK; PAPER_LAT calibrated to L2 hit 212.0 (`sim_run_snake_calib`). `docs/snake/results/S3e.md` |
 | S4 throttling + decoupling; PAPER_LAT L1 knob 23 | **gate stopped** (stop rule) | `f708b4f` (results: `snake: S4 results`) | `57103274` | PAPER_LAT measures L1 28.0 / L2 212.0 (`sim_run_snake_calib/paper_lat23`); synthetic PASS (`sim_run_snake_synth/S4`, 11 runs: Snake-DT runs equal S3e; trace (b) under full Snake throttled 89.4%, 0 issued); off-regression vs `bin_ref_v2` PASS on 6 (`sim_run_snake_regress/S4`); 15 runs (`sim_run_snake_gate/S4`) finish, all invariants OK, no quota assert. **Stop:** mode 1 lowers the demand L1 hit rate vs Snake-DT by > 2% on hotspot (Snake −19.6%, Snake-T −20.6%) and lud (Snake −5.1%); IPC within 2%. `docs/snake/results/S4.md` |
 | S4b revised decoupling mode 1 (`-snake_decouple_variant 1`) + cap diagnosis | done; §5.7 target missed (kept, gap in SPEC §8) | `7af4b95`, `d06395d` (results: `snake: S4b results`) | `3f635b67` | synthetic PASS (`sim_run_snake_synth/S4b`, 11); off-regression PASS on 6 (`sim_run_snake_regress/S4b`); 5 step-1 runs (`S4b_diag`) + 10 gate runs (`S4b`), all invariants OK; variant 0 = S4 exactly. Hit rate v1 vs ISO / DT: hotspot 26.6 vs 32.5 / 32.3 (miss), lud 8.2 vs 8.3 / 8.4 (−3.0%, miss), histo, mri-q, srad_v1 meet it. `docs/snake/results/S4.md` (S4b) |
-| S5 sweeps + cleanup | pending | | | |
+| S5 final-evaluation configs + tooling (no runs) | done; launch awaits approval | `2c3a333` (results: `snake: S5 dry-run and estimate`) | — (`3f635b67`) | Tier 1 21 configs / 189 runs, Tier 2 13 / 117; dry-run generated 11 run dirs (306 jobs, frozen build `2c3a333`/`3f635b67`, no sim.out); 2 smoke runs parse every new token; estimate Tier 1 ≈ 3.8 h (56.5 core-hours), Tier 2 ≈ 2.3 h (35.0) at 15 parallel. `docs/snake/results/S5.md` |
 
 **Reference build for the off-regression (§9.1), from 2026-10-13:** `/home/razul/snake/bin_ref_v2/` = the clean bases plus the trace-parser fix `fe8f37e` only (cherry-picked as `6c28685` on local branch `snake-ref-v2`; `accelsim-commit-6c28685_modified_0.0`, `gpgpu-sim_git-commit-6c3cf4ff_modified_0.0`; built in the worktree `/home/razul/snake/src_ref_v2`; checksums in its `BUILD_INFO.txt`). See VERSION_DIFF "Pre-756ed33 traces".
 **Previous reference, kept as `/home/razul/snake/bin_ref_paperera/` (was `bin_ref`, used for S1–S2b):** it holds `accel-sim.out` plus `lib/libcudart.so`, which contains the gpgpu-sim model. It was built 2026-10-08 from the clean bases (`accelsim-commit-3016c65_modified_0.0`, `gpgpu-sim_git-commit-6c3cf4ff_modified_0.0`); checksums are in `BUILD_INFO.txt`.
@@ -430,7 +430,14 @@ The ablations come from these flags:
       - `compare_paper.py`: SPEC §5 table, Fig. 25 L1 hit rate, ablations, Figs. 20/22/23, Tier 2
       - `s5_estimate.py`: cost estimate
     - Energy: AccelWattch is off in our configs, so Fig. 19's normalized energy is reported as unavailable, with Snake's own energy (SPEC OQ-16).
-    - Dry-run and estimate: in the S5 results commit.
+    - **Done 2026-10-15.** accel-sim `2c3a333` (configs, tooling, docs); gpgpu-sim unchanged.
+    - **Dry-run:** 11 run dirs, 189 + 117 jobs, each dir with the frozen clean build (`2c3a333`, `3f635b67`); no sim.out.
+    - **Smoke runs (2, `sim_run_snake_synth/S5_smoke`):** all new tokens of each tier stacked on the Fig. 15 trace; both parse, finish and keep the invariants.
+    - **Estimate** (`s5_estimate.py`, results/S5.md §3): 2.69 core-hours per config. Tier 1 56.5 core-hours (≈ 3.8 h at 15 parallel); Tier 2 35.0 (≈ 2.3 h). Order: Tier 1, check, then Tier 2.
+    - **Deviations:**
+      - Tier 2 queue size 64 and issue width 2 are separate configs.
+      - Tier 2 gets a new run dir, `sim_run_snake_sens`; Snake-ISO and the PAPER_LAT pair share `sim_run_baseline` and `sim_run_snake`.
+      - The first smoke attempt aborted before generating any job (environment not sourced), so it ran nothing.
   - *Done when:* the sweep run dirs generate and the plots/tables are reproducible.
 
 ## 9. Verification

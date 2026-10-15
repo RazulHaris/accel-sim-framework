@@ -108,10 +108,14 @@ Gates:
 - **§5.7 target missed** on hotspot (hit rate 26.6 vs ISO 32.5 and DT 32.3) and lud (8.2 vs DT 8.4, −3.0%). It is met on histo, mri-q and srad_v1. hotspot's prefetches are used ~900 cycles after issue, so the 50-cycle staleness frees them; lud's gap is throttling.
 - Variant 1 is kept; the gap is in SPEC §8. Tables: `results/S4.md` (S4b).
 
-**S5 (in progress): final-evaluation configs and tooling, nothing launched.**
-- Tier 1: 21 configs (189 runs); Tier 2: 13 configs (117 runs); 1B instructions, 9 workloads (SNAKE_PLAN §8 S5).
-- Tools: `util/snake/s5_runs.sh`, `collect_results.py`, `compare_paper.py`, `s5_estimate.py`.
-- SPEC §8 records the hotspot timing discrepancy (897-cycle median use vs the paper's 50) and lud's request-slot throttling.
-- Dry-run and cost estimate follow in the results commit.
+**S5 (done): final-evaluation configs and tooling; nothing launched but 2 smoke runs.** accel-sim `2c3a333`; gpgpu-sim unchanged (`3f635b67`). Details: `results/S5.md`.
+- **Configs** (1B instructions, 9 workloads):
+  - Tier 1: 21 unique configs, 189 runs. Baseline; Snake exact and line; Snake-DT, Snake-T, s-Snake, Snake-ISO; the PAPER_LAT pair; Tail {20, 40, ∞ = 1024}; popcount at {10, 20, 40}; throttle {25, 75, 100, 150, 200, 300}.
+  - Tier 2: 13 configs, 117 runs. Inter-warp degree {1, 2, 8}, miss-queue reserve 4, stale {200, 1000}, bytes meter, chain depth 3, variant 0, queue 64, issue 2, and the 1132 MHz pair.
+- **Tools:** `s5_runs.sh` (list / dry / run), `collect_results.py` (build-tag, finish and invariant checks; energy), `compare_paper.py`, `s5_estimate.py`; `run_apps.sh` `DRY=1` / `RESUME=1`.
+- **Dry-run:** all 11 run dirs generated with frozen builds (306 jobs), no sim.out. Two smoke runs confirm every new token parses.
+- **Estimate** at 15 parallel: Tier 1 56.5 core-hours, ≈ 3.8 h; Tier 2 35.0 core-hours, ≈ 2.3 h (one config = 2.69 core-hours; histo is longest at ≈ 56 min). Linear extrapolation from 100M runs, ±50%.
+- **Energy:** AccelWattch is off in our configs, so Fig. 19's normalized energy is unavailable. Snake's own energy is computed (SPEC OQ-16).
+- SPEC §8 records hotspot's 897-cycle median prefetch use (paper: within 50 cycles) and lud's request-slot throttling.
 
-**Next:** S5 dry-run, then your approval to launch Tier 1.
+**Next:** your approval to launch Tier 1 (`util/snake/s5_runs.sh tier1 run 15`), then Tier 2.
