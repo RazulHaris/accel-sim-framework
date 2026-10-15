@@ -34,7 +34,7 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
 | Miss-queue / memory-path config check (no runs) | done | `50570b0` | — | config matches Tab. 1 except L1 latency 20 (28) and L2 ROP latency 160 (212); MISS_QUEUE_FULL causes 71–100% of reservation fails; miss queue stays 16. `docs/snake/results/missq_config_check.md` |
 | S3d promoted strides for all warps (OQ-32) + funnel by source | done | `976937f` (results: `snake: S3d results`) | `97119f36` | synthetic PASS (Fig. 15 unchanged, trace (d) 90.8%); off-regression vs `bin_ref_v2` PASS on 6 (`sim_run_snake_regress/S3d`); 10 runs (`sim_run_snake_gate/S3d`), all invariants OK. `docs/snake/results/S3d.md` |
 | S3e paper defaults: inter-warp chain depth 0, deeper chain steps need bit + trained; PAPER_LAT config | done | `20e968f`, `131a513` (results: `snake: S3e results`) | `53bbfd25` | synthetic PASS (Fig. 15 exact; trace (d) 90.8% under `SNAKE_IWC3`, default 86.0% reported); off-regression vs `bin_ref_v2` PASS on 6 (`sim_run_snake_regress/S3e`); 5 runs (`sim_run_snake_gate/S3e`), all invariants OK; PAPER_LAT calibrated to L2 hit 212.0 (`sim_run_snake_calib`). `docs/snake/results/S3e.md` |
-| S4 throttling + decoupling | pending | | | |
+| S4 throttling + decoupling | implemented; gate results in the follow-up commit | | | |
 | S5 sweeps + cleanup | pending | | | |
 
 **Reference build for the off-regression (§9.1), from 2026-10-13:** `/home/razul/snake/bin_ref_v2/` = the clean bases plus the trace-parser fix `fe8f37e` only (cherry-picked as `6c28685` on local branch `snake-ref-v2`; `accelsim-commit-6c28685_modified_0.0`, `gpgpu-sim_git-commit-6c3cf4ff_modified_0.0`; built in the worktree `/home/razul/snake/src_ref_v2`; checksums in its `BUILD_INFO.txt`). See VERSION_DIFF "Pre-756ed33 traces".
@@ -89,10 +89,10 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
   - demand merge into a prefetch's MSHR → **late**
   - eviction with the bit still set → **evicted-unused**
 - **Decoupling** (S4, `snake_decouple_mode`):
-  - 1 = paper (§3.2): a line-level region flag and a quota-aware victim choice in `tag_array`; hit → flag flip; 25% bulk free; 50%-until-trained and 50-cycle confinement.
-  - 2 = isolated buffer (§5.7).
+  - 1 = paper (§3.2): a line-level region flag, set at allocation, and the victim choice in `tag_array::snake_victim`; a demand access to a prefetch-region line flips it; a set without a free line gets a 25% bulk free (side by the 80% transfer rule); 50%-until-trained and 50-cycle confinement cap L1 data (SPEC OQ-12, OQ-15).
+  - 2 = isolated buffer (§5.7): 256 lines beside the L1D; a demand that finds its sector there moves it into the L1D (OQ-22).
   - 0 = none (Snake-DT / s-Snake ablations).
-- **Throttle** (S4, §3.3): the space event halts for 50 cycles; the bandwidth meter (70%/50% hysteresis) halts until the level recovers. Both also cap the chain depth.
+- **Throttle** (S4, §3.3): the space event halts issue for 50 cycles; the bandwidth meter (request slots of the L1D miss-queue drain, 70%/50% hysteresis, OQ-10) halts until the level recovers. While throttled the chain depth is capped at 1 (OQ-7).
 
 ## 2. File-level change list
 **New (gpgpu-sim `src/gpgpu-sim/`)**
@@ -128,7 +128,8 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
 | gpu-cache.h/.cc `l1_cache` | new `snake_prefetch()` (probe + `send_read_request`) | injection |
 | gpu-cache.h `sector_cache_block`/`line_cache_block` | `m_snake_pf[]`, `m_snake_region` | usefulness and decoupling |
 | gpu-cache.cc:353, 371, 422, 439, 450, 464 `tag_array` | callbacks: hit, evict, fill, flush, invalidate | stats and decoupling |
-| gpu-cache.cc:246 `tag_array::probe` | S4: quota-aware victim (mode 1 only) | decoupling |
+| gpu-cache.cc `tag_array::access` (MISS, SECTOR_MISS) | S4: `snake_victim` (mode 1 regions, L1 cap, bulk free; space trigger), `on_allocate` (region, flip) | decoupling |
+| gpu-cache.cc `l1_cache::access`, `baseline_cache::fill`, `l1_cache::snake_prefetch` | S4 mode 2: buffer → L1D move, fill routing, no L1D line for a prefetch | isolated buffer |
 | gpu-cache.cc:569 `mshr_table::add` | demand merge into a prefetch entry → late | timeliness |
 | shader.h `shader_core_ctx` | `get_warp_cta_slot(w)`, `warp_active(w)` getters | inter-warp targets |
 | shader.cc:533/574 `init_warps` | `on_warp_init(w)`, `on_kernel_switch()` | OQ-19/20 |
@@ -223,6 +224,9 @@ Budget with Snake on: **≤15% slower** simulation. With Snake off: **within run
 | `snake_throttle_space_cycles` | uint | 50 | §3.3, Fig. 23 |
 | `snake_bw_high` / `snake_bw_low` | float | 0.70 / 0.50 | §3.3 |
 | `snake_bw_window` | uint | 100 | OQ-10 |
+| `snake_bw_mode` | uint | 0 | 0 = request slots of the L1D miss-queue drain (peak 1 per cycle); 1 = data bytes against `snake_bw_peak_bytes` (S4, OQ-10) |
+| `snake_bw_peak_bytes` | uint | 32 | peak for `snake_bw_mode 1` (S4) |
+| `snake_throttle_chain_depth` | uint | 1 | chain depth limit while throttled (S4, OQ-7) |
 | `snake_decouple_mode` | uint | 1 | 0 none / 1 unified / 2 isolated (OQ-12) |
 | `snake_untrained_l1_frac` | float | 0.50 | §3.2 |
 | `snake_throttle_confine_cycles` | uint | 50 | §3.2 |
@@ -257,8 +261,8 @@ The ablations come from these flags:
   - `timeliness = timely/(timely+late)`
 - **Tables:** `head_updates`, `tail_lookups`, `tail_hits`, `tail_allocs`, `tail_evictions`, `t1_promotions`, `t1_demotions`, `t2_trained`, `interwarp_trained`, `interwarp_trained_pcs`, `warp_excluded_lane_stride` (mode 0), `warp_excluded_lane_runs`, `lane_runs_{32,16,8,4}` (mode 1, OQ-17), `head_row_evictions`, `chain_depth_hist[0..D]`.
 - **Per mode:** {inter_thread, inter_warp, intra_warp} × {generated, issued, useful, late, unused}.
-- **Throttle:** `throttle_space_events`, `throttle_bw_events`, `throttled_cycles`, `bw_util_hist`, and an optional time series (`snake_throttle_log` every N cycles).
-- **Decoupling:** `region_flips`, `bulk_frees`, `bulk_free_l1_side` / `_pf_side`, `l1_quota_victims`.
+- **Throttle (S4):** `throttle_space_events`, `throttle_bw_events`, `throttled_cycles` (`_space`, `_bw`), `bw_windows`, `bw_util_hist_<0..100>`, `pf_held_throttled` (replaces `pf_drop_throttled`), `loads_throttled`, `throttle_chain_cut`, `no_free_space`. The optional time series was not added.
+- **Decoupling (S4):** mode 1: `region_flips` (`_sector_miss`), `flip_unused_sectors`, `pf_fill_l1_region`, `pf_line_allocs`, `bulk_frees`, `bulk_free_l1_side` / `_pf_side`, `bulk_free_lines`, `bulk_free_pf_unused`, `l1_quota_victims`, `l1_cap_cycles_untrained` / `_confine`, `quota_checks`, `decouple_fallback`; mode 2: `iso_inserts`, `iso_hits`, `iso_evictions`, `iso_dup`, `iso_transfer_fail`.
 - **No double counting:** each issued prefetch sector ends in exactly one terminal state.
   - At fill, if a demand had merged into its MSHR entry → `late` (bit not set). Otherwise the bit is set, and the bit later resolves to exactly one of `useful_timely` / `evicted_unused` / `unused_at_end`.
   - Invariant `issued == useful_timely + late + evicted_unused + unused_at_end`. It is checked at every stats print and reported as `snake_pf_invariant = OK|FAIL`; `unused_at_end` = invalidated + resident unused + in flight unmerged (`snake_pf_unused_at_end_total`).
@@ -365,6 +369,11 @@ The ablations come from these flags:
     - Trace (d) fell to 86.0% with the paper default, so its ≥ 90% gate now runs under `SNAKE_IWC3` and the default is reported only; one extra synthetic run.
     - PAPER_LAT was calibrated with the l2_lat microbenchmark: 3 calibration runs in the new run dir `sim_run_snake_calib`, one of which aborted on an sm_75 trace (opcode map) and was redone with an sm_70 build.
     - The L1 knob is 28 as specified, which measures 33; knob 23 would measure 28.
+- **S4 Throttling + decoupling** (2026-10-15).
+  - **Step 0, PAPER_LAT:** `-gpgpu_l1_latency 23` (measured L1 hit 28) and L2 ROP 199 (measured 212); both Table 1 latencies are treated as measured values (VERSION_DIFF). One l2_lat calibration run (`sim_run_snake_calib/paper_lat23`, `bin_ref_v2`): L2 hit 212.0, L1 hit 28.0 cycles.
+  - **Throttling** (SPEC OQ-10, OQ-7): space trigger 50 cycles; bandwidth trigger on the request-slot utilisation of the L1D miss-queue drain over 100-cycle windows, halt at 0.70, resume at 0.50 (`-snake_bw_mode 1`: bytes); while throttled, no issue and chain depth ≤ 1.
+  - **Decoupling** (SPEC OQ-12, OQ-15; OQ-22): mode 1 regions, flips, bulk free, transfer rule, L1 cap until trained and while throttled; mode 2 isolated buffer; mode 0 unchanged (Snake-DT). The S3 override that forced modes 0 and no throttling is removed; the defaults are now full Snake (mode 1 + throttle).
+  - **Gate plan:** synthetic (Fig. 15 and trace (d) under the S3e configs; trace (b) under full Snake: throttled > 50%, `pf_issued`/demand < 10%); off-regression vs `bin_ref_v2` (6, ref cached from S2c); apps hotspot 512, srad_v1, mri-q, lud 512, histo × {Snake, Snake-T, Snake-ISO}, exact footprint, 100M (15 runs, `sim_run_snake_gate/S4`), Snake-DT reused from S3e; stop if mode 1 lowers the demand L1 hit rate or IPC by more than 2% vs Snake-DT. Report: `util/snake/s4_report.py`.
 - **S5 Sweep hooks + cleanup.** Sweep configs for Tail {10, 20, 40, ∞}, eviction policy, throttle {25…300} (Figs. 20, 22, 23), the prefetch queue size and issue width (OQ-4, added in S3a; defaults 32 lines and 1 line per cycle stay until then) and `snake_missq_reserve` (OQ-11, default 8); `compare_paper.py`; docs updated.
   - *Done when:* the sweep run dirs generate and the plots/tables are reproducible.
 
@@ -441,6 +450,12 @@ All of OQ-1…OQ-18 from SPEC §7 carry over, plus:
 - **OQ-20 Warp-slot reuse.** On `init_warps`, invalidate Head[w] (no stride across CTAs) but keep Tail bits. (medium)
 - **OQ-21 Scope.** Train and prefetch only on L1-cached global loads (`GLOBAL_ACC_R`, not bypass, not local, texture or const). Stores and atomics are ignored. (high)
 - **OQ-22 Isolated-Snake size.** Same capacity as the prefetch half (default 256 lines). (low)
+  - **Implemented (S4, 2026-10-15),** `-snake_decouple_mode 2`, `-snake_isolated_lines` 256 (32 KB) per SM: a fully associative LRU buffer with a valid bit per sector, beside the L1D.
+    - A prefetch takes an MSHR entry and a miss-queue slot as before, but no L1D line (`pf_drop_line` cannot occur). A sector already in the buffer is a duplicate (`pf_dup_l1`, also `snake_iso_dup`).
+    - Its fill goes to the buffer, or, if a demand merged into it (late), to the L1D line that demand reserved.
+    - An L1D access (load or store) that misses and finds its sector in the buffer first moves the sector into the L1D (allocated as a fill, the replacement policy's victim; no added latency) and then proceeds, so it hits. The moved sector counts as timely (`snake_iso_hits`); a sector the L1D cannot place stays (`snake_iso_transfer_fail`).
+    - A fill into a full buffer evicts the LRU line (its unused sectors: evicted unused) and fires the space trigger (OQ-10).
+    - The buffer is invalidated with the L1D between kernels. Regions, bulk free and the L1 cap are mode 1 only. (decided)
 - **OQ-23 Clock.** Use the paper's 1530 MHz, or the base's 1132 MHz QV100 calibration? **Decided:** 1530 for the main comparison, plus one 1132 sensitivity run.
 - **OQ-24 Rodinia version.** 3.1 (srad_v1) vs. 2.0-ft (srad_v2). **Decided:** 3.1.
 - **OQ-25 Competitor prefetchers** (INTRA, INTER, MTA, CTA-Aware, Tree). **Decided:** none for now; Snake ablations only.

@@ -20,7 +20,11 @@ S3e on, with the inter-warp chain on (-snake_interwarp_chain_depth >= 1; with
 the paper default 0 it is reported only), trace
 (a) is a saturation test (its demand loads fill the L1 miss queue; the
 MISS_QUEUE_FULL failures and the prefetch drops are reported) and trace (b)
-must issue almost nothing (< 1% of its demand sectors).  coverage_pred
+must issue almost nothing (< 1% of its demand sectors).  From S4 on, a run
+of trace (b) with throttling on (-snake_throttle_enable 1) must also be
+throttled for more than 50% of its Snake cycles (snake_throttled_cycles /
+snake_hook_tick) and issue less than 10% of its demand sectors; the
+decoupling counters are reported.  coverage_pred
 (OQ-14) is reported next to coverage_paper and accuracy_paper.
 
 From S3b on (inter-warp issue), Fig. 15 (c) is also checked against the
@@ -112,6 +116,10 @@ def stats(path):
             out["footprint"] = int(line.split()[1])
         elif line.startswith("-snake_interwarp_chain_depth"):
             out["iw_chain"] = int(line.split()[1])
+        elif line.startswith("-snake_throttle_enable"):
+            out["throttle"] = int(line.split()[1])
+        elif line.startswith("-snake_decouple_mode"):
+            out["decouple"] = int(line.split()[1])
         elif "exit detected" in line:
             out["done"] = True
         elif "Total_core_cache_fail_stats_breakdown[GLOBAL_ACC_R][MISS_QUEUE_FULL]" in line:
@@ -317,6 +325,24 @@ def check_random(path, p):
           "tail_evictions=%s" % tuple(st.get("snake_" + k) for k in
                                       ("loads_observed", "tail_lookups",
                                        "tail_allocs", "tail_evictions")))
+    if st.get("throttle") == 1:  # S4 gate
+        ticks = max(st.get("snake_hook_tick", 0), 1)
+        thr = st.get("snake_throttled_cycles", 0)
+        check(thr > 0.5 * ticks, "throttled > 50%% of Snake cycles: %.1f%% "
+              "(%d / %d; space %d, bandwidth %d)" % (
+                  100.0 * thr / ticks, thr, ticks,
+                  st.get("snake_throttled_cycles_space", 0),
+                  st.get("snake_throttled_cycles_bw", 0)))
+        check(st.get("snake_pf_issued", 0) < 0.10 * max(dem, 1),
+              "pf_issued / demand < 10%%: %s / %d" % (st.get("snake_pf_issued"), dem))
+        print("  info  decouple_mode=%s space events %s, bandwidth events %s; "
+              "no free space %s; bulk frees %s (L1 side %s, pf side %s, %s "
+              "lines); L1 quota victims %s; region flips %s; quota checks %s" % (
+                  st.get("decouple"), *(st.get("snake_" + k) for k in (
+                      "throttle_space_events", "throttle_bw_events",
+                      "no_free_space", "bulk_frees", "bulk_free_l1_side",
+                      "bulk_free_pf_side", "bulk_free_lines",
+                      "l1_quota_victims", "region_flips", "quota_checks"))))
 
 
 def main():

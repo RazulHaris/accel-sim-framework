@@ -68,7 +68,8 @@ Updated with every stage. A stage's gate results and its own commit hashes go in
 - lud 512 line raises demand MISS_QUEUE_FULL by 29% (the exact footprint lowers it).
 - The eviction weight (OQ-30) does not help backprop: every entry there holds an inter-warp stride. srad_v1's such evictions fall by ~25%.
 
-**In progress:** nothing.
+**In progress:** S4, throttling and decoupling (SNAKE_PLAN §8). Implemented: the space and bandwidth triggers (request slots of the L1D miss-queue drain, OQ-10), the chain cap while throttled (OQ-7), mode 1 regions with flips, bulk free, the transfer rule and the L1 cap (OQ-12, OQ-15), the mode 2 isolated buffer (OQ-22). Gates pending; results go into the follow-up commit.
+- **PAPER_LAT (S4 step 0):** L1 knob 23, L2 ROP 199; one l2_lat run measures L1 hit 28.0 and L2 hit 212.0 cycles (Table 1: 28 / 212). Both are treated as measured values (VERSION_DIFF).
 
 **Reference builds:** both are in `/home/razul/snake/`, with checksums in their `BUILD_INFO.txt`.
 - `bin_ref_v2` is the regression reference from 2026-10-13: the clean base plus the parser fix.
@@ -82,4 +83,4 @@ Updated with every stage. A stage's gate results and its own commit hashes go in
 - `sim_run_snake_gate/<stage>`: real-workload gate runs, from S3a on.
 - `sim_run_snake_refcache/bin_ref_v2`: cached baseline outputs.
 
-**Next:** S4, throttling and decoupling (SNAKE_PLAN §8). Open for the final evaluation: the PAPER_LAT L1 knob (28 as specified, or 23 to measure 28).
+**Next:** the S4 gates (synthetic, off-regression, 15 app runs), then S5.

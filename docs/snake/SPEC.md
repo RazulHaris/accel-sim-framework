@@ -167,6 +167,7 @@ Format: interpretation (confidence).
   - **Correction (S2):** Fig. 15 does not use these codes. It prints the promoted entry of phase (b) as '01', the trained one of (c) as '11', and a one-warp entry and a new intra stride as '00'. The *states* match the order above; only the printed codes differ, so the codes are treated as internal labels (SNAKE_PLAN S2 notes).
 - **OQ-6 Inter-warp stride.** Normalised per warp-ID distance: (a_j − a_i)/(w_j − w_i), equal across ≥3 warps, as in Fig. 15a. (medium)
 - **OQ-7 Chain depth.** Config `snake_max_chain_depth`, default 3. Paper gives no number; Fig. 13 shows depth 2. Throttling can reduce it to 0. (low)
+  - **S4:** §3.2 says the chain length is "controlled by the throttling mechanism", without a value. While throttled (OQ-10), the inter-thread chain stops at `-snake_throttle_chain_depth` (default 1): the warp's next load is still predicted, the deeper steps are not. Chain steps cut this way are counted in `snake_throttle_chain_cut`. (low)
 - **OQ-8 Inter-warp targets.** Prefetch for the next `snake_interwarp_degree` (default 4) warp IDs above w that are resident on the SM and in the same CTA. "All future warps" is unbounded. (low)
   - **Implemented (S3b):** the targets are the next 4 warp slots above w that were initialised in the same HW CTA slot and have not exited (`shader_core_ctx::warp_active`); exited warps are skipped, not counted. Each target's address is a + (w₂ − w)·S_iw, with the triggering load's lane descriptor (OQ-9).
 - **OQ-9 Prefetch footprint.** **Revised 2026-10-13 (S2c):** selected by `-snake_footprint`. In S2c the option and the storage exist; requests are issued from S3 on.
@@ -182,6 +183,13 @@ Format: interpretation (confidence).
   - Per-SM injected L1→icnt bytes per window, divided by the per-SM share of peak L1↔L2 bandwidth.
   - Window `snake_bw_window` = 100 cycles; hysteresis 70%/50%.
   - Evaluated at the end of each window. (low)
+  - **Implemented (S4, 2026-10-15): request slots, not bytes.** The paper says "bandwidth". In our model the L1↔L2 limit an SM sees is the L1D miss-queue drain: at most one request per cycle, and the interconnect never refused one (S3c, results/S3c_diag.md §2). So the default meter (`-snake_bw_mode 0`) is the request-slot utilisation of that drain: requests sent from the SM's L1D miss queue (demand, prefetch and writes) per cycle, against a peak of 1.
+    - Per SM, over windows of `snake_bw_window` (100) cycles, evaluated at the first Snake tick after each window ends.
+    - Prefetch issue halts at ≥ `snake_bw_high` (0.70) and resumes at ≤ `snake_bw_low` (0.50).
+    - `-snake_bw_mode 1` is the bytes variant: the data bytes of the requests sent (32 B per sector read, the write size for writes) against `-snake_bw_peak_bytes` (32) per cycle.
+    - Stats: `snake_throttle_bw_events`, `snake_throttled_cycles_bw`, `snake_bw_util_hist_<0..100>` (windows by utilisation, in tenths).
+  - **Space trigger (§3.3).** "When the unified memory has no free space", issue halts for `snake_throttle_space_cycles` (50); a new event restarts the 50 cycles. No free space is: mode 1, an allocation whose L1D set has no free line (the bulk-free event, OQ-12); mode 2, the isolated buffer full at a prefetch fill (OQ-22); mode 0, a full set at any L1D allocation.
+  - **While throttled:** nothing is issued; the queue keeps its lines and new predictions still enter it. Cycles in which a ready line was held back are counted in `snake_pf_held_throttled` (the S3 placeholder `pf_drop_throttled` is renamed, since nothing is dropped). The chain is capped (OQ-7) and L1 data is confined (OQ-15). `snake_throttled_cycles` / `snake_hook_tick` is the throttled share of an SM's cycles; `_space` and `_bw` split it by trigger (a cycle with both counts in both). (decided)
 - **OQ-11 MSHR and miss queue.**
   - A prefetch sector allocates its line or sector, an L1 MSHR entry and a miss-queue slot through `send_read_request`, like a demand read miss, as an `L1_PREFETCH_R` read with no instruction. Demand misses can merge into it ("late prefetch").
   - **Implemented (S3a, `l1_cache::snake_prefetch`):** a sector is offered once and never retried.
@@ -204,6 +212,21 @@ Format: interpretation (confidence).
   - "No free space" = the fill's set has no invalid, unreserved line.
   - "Free 25%" = evict ⌈25%⌉ of that set's evictable lines (LRU), from the side chosen by the >80%-transferred rule. That rule uses a per-SM counter, reset each window.
   - Also offer `snake_decouple_mode`: 0 = none (Snake-DT), 1 = unified flag partition (paper), 2 = isolated buffer (§5.7). (low)
+  - **Implemented (S4, 2026-10-15), mode 1** (`tag_array::snake_victim`, `snake_prefetcher::on_allocate` / `on_tag_hit`):
+    - **Region per line.** Every L1D line has one flag: L1 region or prefetch region. The L1D allocates on a miss, so the flag is set when the line is reserved: by a prefetch → prefetch region, by any other access → L1 region.
+    - **Flip.** A demand access (any non-prefetch access: a hit, a pending hit or a sector miss) to a prefetch-region line moves the whole line to the L1 region, with no data movement (§3.2). A sector miss flips too, because demand data then lives in the line (`snake_region_flips_sector_miss`).
+    - **Sectors (decided 2026-10-15: follow the paper, one flag per entry).** A flip moves the line's other prefetched sectors to the L1 region as well; they lose the region's protection while still unused. They are counted in `snake_flip_unused_sectors`; prefetched sectors filled into a line that is already in the L1 region (a sector added to an L1 line, or a line flipped while the prefetch was in flight) in `snake_pf_fill_l1_region`.
+    - **Victims.** A demand allocation never evicts a prefetch-region line; prefetch-region lines leave only by a bulk free (or an invalidation). Both regions grow into free lines.
+    - **No free space** = the allocation's set has no free line. Then the space trigger fires (OQ-10) and a **bulk free** evicts ⌈`snake_free_frac` (25%) × the set's evictable lines⌉ by LRU, all from one side:
+      - the L1 side if more than `snake_transfer_frac` (80%) of the prefetched lines moved to the L1 region, otherwise the prefetch side;
+      - the transfer share is (flips) / (prefetch-region allocations) counted since the previous bulk free on that SM: the "window" of the earlier text is the interval between bulk frees;
+      - if the chosen side has no evictable line, the other side is used;
+      - evictable is as for the replacement policy (no reserved line); a modified line is freed only in a write-through cache, as the L1D is, since it needs no writeback.
+      The allocation then takes a freed line.
+    - **L1 cap** (OQ-15 and the throttle confinement): a demand allocation in a set whose L1-region lines reach ⌊`snake_untrained_l1_frac` × assoc⌋ evicts the set's LRU evictable L1-region line, even if free lines exist; it fires no bulk free. If no L1-region line is evictable, the normal path is taken, so the cap never causes a reservation failure.
+    - **Debug asserts** (always compiled in): the victim is never reserved; a demand victim is never a valid prefetch-region line; a capped victim is an L1-region line. Each check is counted in `snake_quota_checks`. `snake_decouple_fallback` counts a bulk free that could free nothing (only possible in a write-back cache).
+    - The set is the unit of every rule; the QV100 L1D has 4 sets of up to 256 ways, so a set is a quarter of the unified space.
+  - Mode 2: SNAKE_PLAN §12 OQ-22. (decided)
 - **OQ-13 Inputs and traces.**
   - Use Accel-Sim's default `define-all-apps.yml` arguments.
   - Rodinia version: paper unstated. Local traces exist for both 2.0-ft (srad_v2) and 3.1 (srad_v1).
@@ -227,6 +250,8 @@ Format: interpretation (confidence).
     - Definitions and results: results/S3c_diag.md §1.
   - (decided)
 - **OQ-15 50%-until-trained.** Applies per kernel launch, from launch until the first Tail entry reaches promoted. (low)
+  - **Implemented (S4):** per SM. The flag is cleared when the SM starts a different kernel (OQ-19) and set at the SM's first T1 promotion. Until then, L1 data is capped at 50% of each set (OQ-12, "L1 cap").
+  - **Confinement while throttled (§3.2):** the same cap applies from the start of each throttle episode for at most `snake_throttle_confine_cycles` (50) cycles. Cycles under each cap: `snake_l1_cap_cycles_untrained` and `_confine`. (decided)
 - **OQ-16 Energy.** AccelWattch is not modified. Add Snake energy offline: accesses × 6.4 pJ + 6 mW × time, from Snake stats. (medium)
 - **OQ-17 Which warps Snake uses (lane check).** **Decided 2026-10-13: a deliberate deviation from §3.4, selected by `-snake_lane_mode`.**
   - **Why.** §3.4 says the inter-lane strides of a warp are "consistently equal" and excludes warps where they are not. In the local Rodinia traces this is false for 2-D thread blocks. With 16×16 blocks each warp covers two 16-lane rows, e.g. backprop PC 0x180 has lane deltas 4 ×15, 8, 4 ×15. The paper-literal rule excluded 100% of hotspot's and 99.1% of backprop's eligible loads in the S2 gate, so neither trains, yet the paper reports ~88% and ~83% coverage for them (Fig. 16).

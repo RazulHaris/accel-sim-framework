@@ -27,6 +27,9 @@ FIG15_CFGS=${FIG15_CFGS-$CFG-SNAKE_IWC3}
 # $DEP_CFGS (may be empty) run trace (d) only; from S3e the >= 90% coverage
 # gate applies with the inter-warp chain on (OQ-29), the default reports it.
 DEP_CFGS=${DEP_CFGS-$CFG-SNAKE_FP1-SNAKE_IWC3}
+# $RAND_CFGS (may be empty) run trace (b) only; from S4 full Snake (decoupling
+# mode 1 and throttling) must be throttled > 50% of its cycles there.
+RAND_CFGS=${RAND_CFGS-QV100-SASS-SYNTH_LRR1-SNAKE-SNAKE_DBG}
 
 cd "$ACCELSIM"
 for r in . gpu-simulator/gpgpu-sim; do
@@ -52,6 +55,9 @@ python3 util/job_launching/run_simulations.py -B snake-synth -C "$CFGS" -T "$OUT
 [ -z "$DEP_CFGS" ] || python3 util/job_launching/run_simulations.py \
     -B snake-synth:snake-synth-strided-dep -C "$DEP_CFGS" -T "$OUT/traces" \
     -N snake_synth_${STAGE}_dep -r "$OUT/runs" -n >/dev/null
+[ -z "$RAND_CFGS" ] || python3 util/job_launching/run_simulations.py \
+    -B snake-synth:snake-synth-random -C "$RAND_CFGS" -T "$OUT/traces" \
+    -N snake_synth_${STAGE}_rand -r "$OUT/runs" -n >/dev/null
 find "$OUT/runs" -name justrun.sh -printf '%h\n' | sort | sed "s#^$OUT/runs/##"
 echo "$(find "$OUT/runs" -name justrun.sh | wc -l) runs"
 
@@ -75,5 +81,9 @@ done
 for c in ${DEP_CFGS//,/ }; do
   echo "######## $c (trace (d) only)"
   python3 -I util/snake/check_synthetic.py "$OUT/runs" "$OUT/traces" "$c" snake-synth-strided-dep || status=1
+done
+for c in ${RAND_CFGS//,/ }; do
+  echo "######## $c (trace (b) only)"
+  python3 -I util/snake/check_synthetic.py "$OUT/runs" "$OUT/traces" "$c" snake-synth-random || status=1
 done
 exit $status

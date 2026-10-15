@@ -92,6 +92,7 @@ Details: [results/missq_config_check.md](results/missq_config_check.md).
   - Our reservation-fail rates and L1↔L2 traffic are lower than in the paper's Figs. 3–4.
   - So the paper's GPU had more latency to hide, a likely contributor to the gap in Snake's gains.
   - **Measured** (l2_lat microbenchmark, sim_run_snake_calib): our config gives an L2 hit of 173 cycles and an L1 hit of 25. Config **`PAPER_LAT`** (`-gpgpu_l1_latency 28`, `-gpgpu_l2_rop_latency 199`) gives 212 and 33. It is defined and calibrated for the final evaluation only (results/S3e.md §3).
+  - **Both Table 1 latencies are treated as measured values (decided 2026-10-15, S4).** `PAPER_LAT` is now `-gpgpu_l1_latency 23` and `-gpgpu_l2_rop_latency 199`. One l2_lat run with `bin_ref_v2` (`sim_run_snake_calib/paper_lat23`) measures an **L1 hit of 28.0** and an **L2 hit of 212.0** cycles, Table 1's 28 and 212 (results/S4.md §0).
 - **Figs. 3–5 from the bin_ref_v2 baselines.**
   - Miss-queue congestion causes 71–100% of reservation fails, as the paper says. The fail rates are lower (GMEAN 0.17 without nw vs 0.26; hotspot 0.08 vs 0.57, srad_v1 0.22 vs 0.71); backprop matches.
   - L1↔L2 utilisation is lower (10.5% vs 33% average, peak = 64 packets/cycle).
@@ -103,6 +104,7 @@ Details: [results/missq_config_check.md](results/missq_config_check.md).
 3. **Latency mismatches:**
    - Paper "28-cycle" L1 vs. config `l1_latency 20`.
    - Paper "212-cycle" L2 vs. `l2_rop_latency 160`. That could be measured end to end.
+   - **Mitigation (S4):** `PAPER_LAT` reproduces both as measured latencies (L1 knob 23 → 28 cycles, L2 ROP 199 → 212 cycles), for the final evaluation.
 4. **Interconnect:** iSLIP arbitration change (#67) and multi-bank bypass (#127).
 5. **Kernel concurrency:** `max_concurrent_kernel` 128 plus the stream window can overlap kernels.
 6. **Execution latencies:** retuned `trace.config` values and the perfect const/inst cache expose a different share of memory latency.
