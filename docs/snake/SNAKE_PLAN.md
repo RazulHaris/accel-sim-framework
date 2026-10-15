@@ -36,7 +36,7 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
 | S3e paper defaults: inter-warp chain depth 0, deeper chain steps need bit + trained; PAPER_LAT config | done | `20e968f`, `131a513` (results: `snake: S3e results`) | `53bbfd25` | synthetic PASS (Fig. 15 exact; trace (d) 90.8% under `SNAKE_IWC3`, default 86.0% reported); off-regression vs `bin_ref_v2` PASS on 6 (`sim_run_snake_regress/S3e`); 5 runs (`sim_run_snake_gate/S3e`), all invariants OK; PAPER_LAT calibrated to L2 hit 212.0 (`sim_run_snake_calib`). `docs/snake/results/S3e.md` |
 | S4 throttling + decoupling; PAPER_LAT L1 knob 23 | **gate stopped** (stop rule) | `f708b4f` (results: `snake: S4 results`) | `57103274` | PAPER_LAT measures L1 28.0 / L2 212.0 (`sim_run_snake_calib/paper_lat23`); synthetic PASS (`sim_run_snake_synth/S4`, 11 runs: Snake-DT runs equal S3e; trace (b) under full Snake throttled 89.4%, 0 issued); off-regression vs `bin_ref_v2` PASS on 6 (`sim_run_snake_regress/S4`); 15 runs (`sim_run_snake_gate/S4`) finish, all invariants OK, no quota assert. **Stop:** mode 1 lowers the demand L1 hit rate vs Snake-DT by > 2% on hotspot (Snake −19.6%, Snake-T −20.6%) and lud (Snake −5.1%); IPC within 2%. `docs/snake/results/S4.md` |
 | S4b revised decoupling mode 1 (`-snake_decouple_variant 1`) + cap diagnosis | done; §5.7 target missed (kept, gap in SPEC §8) | `7af4b95`, `d06395d` (results: `snake: S4b results`) | `3f635b67` | synthetic PASS (`sim_run_snake_synth/S4b`, 11); off-regression PASS on 6 (`sim_run_snake_regress/S4b`); 5 step-1 runs (`S4b_diag`) + 10 gate runs (`S4b`), all invariants OK; variant 0 = S4 exactly. Hit rate v1 vs ISO / DT: hotspot 26.6 vs 32.5 / 32.3 (miss), lud 8.2 vs 8.3 / 8.4 (−3.0%, miss), histo, mri-q, srad_v1 meet it. `docs/snake/results/S4.md` (S4b) |
-| S5 final-evaluation configs + tooling (no runs) | done; launch awaits approval | `2c3a333` (results: `snake: S5 dry-run and estimate`) | — (`3f635b67`) | Tier 1 21 configs / 189 runs, Tier 2 13 / 117; dry-run generated 11 run dirs (306 jobs, frozen build `2c3a333`/`3f635b67`, no sim.out); 2 smoke runs parse every new token; estimate Tier 1 ≈ 3.8 h (56.5 core-hours), Tier 2 ≈ 2.3 h (35.0) at 15 parallel. `docs/snake/results/S5.md` |
+| S5 final-evaluation configs + tooling (no runs) | done; Tier 1 run (below) | `2c3a333` (results: `snake: S5 dry-run and estimate`) | — (`3f635b67`) | Tier 1 21 configs / 189 runs, Tier 2 13 / 117; dry-run generated 11 run dirs (306 jobs, frozen build `2c3a333`/`3f635b67`, no sim.out); 2 smoke runs parse every new token; estimate Tier 1 ≈ 3.8 h (56.5 core-hours), Tier 2 ≈ 2.3 h (35.0) at 15 parallel. `docs/snake/results/S5.md` |
 
 **Reference build for the off-regression (§9.1), from 2026-10-13:** `/home/razul/snake/bin_ref_v2/` = the clean bases plus the trace-parser fix `fe8f37e` only (cherry-picked as `6c28685` on local branch `snake-ref-v2`; `accelsim-commit-6c28685_modified_0.0`, `gpgpu-sim_git-commit-6c3cf4ff_modified_0.0`; built in the worktree `/home/razul/snake/src_ref_v2`; checksums in its `BUILD_INFO.txt`). See VERSION_DIFF "Pre-756ed33 traces".
 **Previous reference, kept as `/home/razul/snake/bin_ref_paperera/` (was `bin_ref`, used for S1–S2b):** it holds `accel-sim.out` plus `lib/libcudart.so`, which contains the gpgpu-sim model. It was built 2026-10-08 from the clean bases (`accelsim-commit-3016c65_modified_0.0`, `gpgpu-sim_git-commit-6c3cf4ff_modified_0.0`); checksums are in `BUILD_INFO.txt`.
@@ -438,6 +438,20 @@ The ablations come from these flags:
       - Tier 2 queue size 64 and issue width 2 are separate configs.
       - Tier 2 gets a new run dir, `sim_run_snake_sens`; Snake-ISO and the PAPER_LAT pair share `sim_run_baseline` and `sim_run_snake`.
       - The first smoke attempt aborted before generating any job (environment not sourced), so it ran nothing.
+  - **Final evaluation, Tier 1 (2026-10-15/16; approved with conditions).**
+    - **Pre-flight:** 1 RSS run plus 1 power smoke run, plus a paired power off/on of hotspot 512 to measure the slowdown (`sim_run_snake_preflight`, 4 short runs).
+      - Peak RSS 1.85 GB (2.23 GB across Tier 1): parallelism 15.
+      - Disk 160 GB free; debug trace off in all 306 configs; launch gate held.
+      - AccelWattch +55% wall time, > 30%: no POWER configs; energy unavailable (SPEC §8).
+    - **Commit `e89c9d0`:** `s5_runs.sh run` checks the launch gate, writes time.txt per job and takes `ONLY_CFGS` for the canary; `collect_results.py` reads time.txt.
+    - **Canary** (18 jobs): clean; first 100M instructions identical to the gates.
+    - **Tier 1:** 171 more jobs; 189/189 pass `collect_results.py --require-all`.
+      - Unlimited Tail evictions: backprop 107,498, others 0.
+      - Ours vs the paper (7-app averages): coverage_pred 63.2 vs 75.7%, accuracy 6.1 vs 69.1%, IPC −0.3 vs +14.1%, L1 hit 18.7 → 25.2 vs 45 → 79.
+      - Time: 64.9 vs 56.5 core-hours; 4 h 33 min vs ≈ 3.8 h.
+      - `results/final_tier1.md`, `results/final_tier1.csv`.
+    - **Deviation:** the power slowdown needed a power-off reference under the same load, so 2 runs (paired off/on) were added to the 1 smoke run.
+    - **Tier 2 waits for approval.**
   - *Done when:* the sweep run dirs generate and the plots/tables are reproducible.
 
 ## 9. Verification

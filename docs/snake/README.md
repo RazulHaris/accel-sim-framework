@@ -118,4 +118,24 @@ Gates:
 - **Energy:** AccelWattch is off in our configs, so Fig. 19's normalized energy is unavailable. Snake's own energy is computed (SPEC OQ-16).
 - SPEC §8 records hotspot's 897-cycle median prefetch use (paper: within 50 cycles) and lud's request-slot throttling.
 
-**Next:** your approval to launch Tier 1 (`util/snake/s5_runs.sh tier1 run 15`), then Tier 2.
+**Final evaluation, Tier 1 (done 2026-10-16): 189/189 jobs, all checks OK.** Details: `results/final_tier1.md`, per-job CSV `results/final_tier1.csv`.
+- **Pre-flight:**
+  - peak RSS 2.23 GB per job: 15 parallel ≤ 54% of RAM
+  - 160 GB of disk free
+  - debug trace off in all 306 configs
+  - launch gate held: clean trees, frozen builds, no rebuild
+  - AccelWattch costs +55% wall time (> 30%), so energy stays unavailable (SPEC §8)
+- **Canary** (baseline + Snake × 9): clean. Each run's first 100M instructions reproduce the gates exactly; backprop's and srad_v1's full-run coverage is lower because of kernels the 100M gates never reached.
+- **Ours vs the paper** (7-app averages):
+  - coverage_pred 63.2% vs 75.7%; coverage_paper 21.9%
+  - accuracy 6.1% vs 69.1%
+  - IPC −0.3% vs +14.1%
+  - demand L1 hit rate 18.7 → 25.2% (Snake-ISO 26.4) vs 45 → 79 (84)
+  - energy unavailable
+- **Ablations:** within ±0.2% IPC of each other.
+- **Sweeps:** Tail 10 → 1,024 adds 1.2 pp coverage_pred. popcount is 1.9–3.4 pp below lru_popcount. A longer space halt lowers coverage_paper (22.2 → 17.6%).
+- **Unlimited Tail (1,024):** 0 evictions except backprop (107,498).
+- **Time:** 64.9 core-hours vs 56.5 estimated; 4 h 33 min vs ≈ 3.8 h.
+- **Commits:** accel-sim `e89c9d0` (launch tooling, energy decision) and `snake: final evaluation Tier 1 results`; gpgpu-sim unchanged (`3f635b67`).
+
+**Next:** Tier 2 (117 jobs, ≈ 40 core-hours, ≈ 2.7 h) awaits your approval.
