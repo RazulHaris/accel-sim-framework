@@ -343,6 +343,12 @@ SNAKE_Q64:
 SNAKE_ISSUE2:
     extra_params: "-snake_issue_width 2"
 
+# S6 IPC investigation: the latency ceiling.  L1 misses still use the L1D and
+# its miss queue, but the memory system answers at once (no L2/DRAM latency);
+# the most a prefetcher could gain in this simulator.
+PERFECT_MEM:
+    extra_params: "-gpgpu_perfect_mem 1"
+
 # One LRR scheduler per SM without the sub-core model, so the warps of a CTA
 # issue strictly round robin, as in the paper's Fig. 15 example.
 SYNTH_LRR1:
