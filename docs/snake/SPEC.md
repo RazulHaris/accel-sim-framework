@@ -350,6 +350,13 @@ OQ-19…OQ-28 (simulator-specific questions, the decisions on clock, Rodinia ver
   - `-snake_interwarp_scope 2` (same warp index in later resident CTAs; S6 experiment, default 0) makes backprop's prefetches timely: accuracy 0.2 → 14.0%, lead 1,602 cycles. IPC stays flat (+0.07%) because backprop is DRAM-bound.
   - Scope 2 is wrong on 2D grids (hotspot −4.7%).
 - The paper's GPU was evidently more latency-bound (its Figs. 3–5: memory stalls 55% of stalls); that, more than the prefetcher, explains the IPC gap.
+- **D1 (results/D1_ceilings.md): the ceilings on exactly Tier 1's config, all 9 workloads.**
+  - The S6 perfect-memory numbers are confirmed bit for bit; nw is new (+19.0%).
+  - `-gpgpu_perfect_mem` removes everything beyond the SM (interconnect, L2 and DRAM latency, bandwidth and queueing) but keeps the L1 latency queue, L1D misses, MSHRs and the one-per-cycle miss queue.
+  - The new `-gpgpu_perfect_l1d` makes every L1-cached global load hit at L1 latency.
+  - **Perfect-L1 gains:** hotspot +0.1–0.3%, mri-q +2%, lud +3–4%; srad_v1 +21%, nw +17%, histo +39%, backprop +42%.
+  - GMEAN: +16.6% (PAPER_V100) and +17.9% (PAPER_LAT), against the paper's +14.1% and Snake's −0.3% / −0.2%.
+  - Both ceilings also remove the loads' memory traffic, so for the DRAM- or miss-queue-bound apps they are upper bounds that a real prefetcher cannot reach.
 
 ### Observations per stage
 - **S4 (results/S4.md).**

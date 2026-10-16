@@ -147,4 +147,18 @@ Gates:
 - **Not fixable within Snake on these workloads.** A paper-like gain needs a more latency-bound baseline, which is a separate decision.
 - **Commits:** accel-sim `40d0a04` (PERFECT_MEM), `4502b2d` (IWS tokens), results commit; gpgpu-sim `e85e7eb1` (`-snake_interwarp_scope`).
 
-**Next:** your decision on S6 (keep the paper-faithful defaults; whether to try a more latency-bound baseline), and on Tier 2 (117 jobs, ≈ 40 core-hours, ≈ 2.7 h).
+**D1: ceilings on exactly Snake's config (done 2026-10-16).** Details: `results/D1_ceilings.md`.
+- **S6 confirmed.** The S6 perfect-memory runs match Tier 1's config, traces, 1B cap and build exactly, but covered 8 of 9 workloads (no nw).
+  - Re-run on all 9: IPC bit-identical for the 8; nw +19.0%.
+- **Source** (gpgpu-sim `7ed7810e`): `-gpgpu_perfect_mem` replaces the SM's memory interface (shader.cc:166-172, shader.h:2779-2796).
+  - It removes all interconnect, L2 and DRAM latency, bandwidth and queueing.
+  - The L1 latency queue, L1D tags, MSHRs, miss queue (one request per cycle) and the fill path remain, so loads still miss.
+- **New `-gpgpu_perfect_l1d`** (gpgpu-sim `7ed7810e`, token `PERFECT_L1D`, default off): every L1-cached global load hits at L1 latency. Off-regression PASS (6); every perfect-L1D run hits 100% of its global loads.
+- **Ceilings** (GMEAN over 7 apps; perfect memory / perfect L1 / Snake vs the paper's +14.1%):
+  - PAPER_V100: +16.8% / +16.6% / −0.3%
+  - PAPER_LAT: +18.4% / +17.9% / −0.2%
+  - hotspot, mri-q and lud stay < 5% with a perfect L1; the headroom is in backprop, histo, srad_v1 and nw.
+- **Runs:** 42 (18 perfect memory on Tier 1's frozen build, 18 perfect L1D, 6 off-regression).
+- **Commits:** accel-sim `ac28769` (token, normalizer) and the D1 results commit; gpgpu-sim `7ed7810e`.
+
+**Next:** your go-ahead on Phase 1. Tier 2 (117 jobs) also still awaits approval.
