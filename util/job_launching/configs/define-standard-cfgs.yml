@@ -357,6 +357,11 @@ SNAKE_IWS2:
 PERFECT_MEM:
     extra_params: "-gpgpu_perfect_mem 1"
 
+# D1 ceiling: every L1-cached global load hits in the L1D at L1 latency (a
+# perfect prefetcher); stores and L1-bypassing loads are unchanged.
+PERFECT_L1D:
+    extra_params: "-gpgpu_perfect_l1d 1"
+
 # One LRR scheduler per SM without the sub-core model, so the warps of a CTA
 # issue strictly round robin, as in the paper's Fig. 15 example.
 SYNTH_LRR1:

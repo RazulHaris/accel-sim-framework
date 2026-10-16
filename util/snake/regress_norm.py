@@ -6,7 +6,8 @@
 Removes only:
   * volatile lines: wall-clock time, simulation rate, slowdown,
     build strings and binary/library paths;
-  * the -snake_* lines that gpgpu-sim's option dump gains from the new options
+  * the -snake_* lines that gpgpu-sim's option dump gains from the new options,
+    and the -gpgpu_perfect_l1d line (D1 ceiling option, default off)
     (OptionParser::Print, src/option_parser.cc:422);
   * with --strip-snake-block, Snake's own stats block (a blank line,
     "Snake prefetcher:", snake_* lines), which only exists with Snake on.
@@ -22,7 +23,7 @@ import re
 import sys
 
 VOLATILE = re.compile(
-    r"^-snake_|gpgpu_simulation_time|gpgpu_simulation_rate|gpu_total_sim_rate|"
+    r"^-snake_|^-gpgpu_perfect_l1d |gpgpu_simulation_time|gpgpu_simulation_rate|gpu_total_sim_rate|"
     r"gpgpu_silicon_slowdown|Accel-Sim \[build|GPGPU-Sim.*build |"
     r"accelsim-commit-|gpgpu-sim_git-commit-|"
     r"/accel-sim\.out|/libcudart"
