@@ -138,4 +138,13 @@ Gates:
 - **Time:** 64.9 core-hours vs 56.5 estimated; 4 h 33 min vs ≈ 3.8 h.
 - **Commits:** accel-sim `e89c9d0` (launch tooling, energy decision) and `snake: final evaluation Tier 1 results`; gpgpu-sim unchanged (`3f635b67`).
 
-**Next:** Tier 2 (117 jobs, ≈ 40 core-hours, ≈ 2.7 h) awaits your approval.
+**S6: why there is no IPC gain (done 2026-10-16).** Details: `results/S6_ipc.md`; SPEC §8.
+- **Ceiling.** With perfect memory, hotspot, mri-q and lud gain < 5%: the simulated GPU already hides their latency. backprop (+47%), histo (+30%) and srad_v1 (+22.5%) have headroom.
+- **That headroom is bandwidth and queueing.** backprop and histo are DRAM-queue bound; srad_v1 and mri-q are limited by the L1 miss queue and MSHRs. Prefetching moves the same bytes: backprop's DRAM reads are identical in every config.
+- **Snake's own limit is lead time:** inter-warp predictions come ~20 cycles before use.
+  - Experiment `-snake_interwarp_scope 2` (later CTAs; default 0): backprop accuracy 0.2 → 14.0%, lead 1,602 cycles, but IPC +0.07% (DRAM-bound); hotspot −4.7% (2D grid).
+- **Runs:** 8 ceiling, 8 experiment, 11 synthetic (identical to S4b), 6 off-regression (PASS).
+- **Not fixable within Snake on these workloads.** A paper-like gain needs a more latency-bound baseline, which is a separate decision.
+- **Commits:** accel-sim `40d0a04` (PERFECT_MEM), `4502b2d` (IWS tokens), results commit; gpgpu-sim `e85e7eb1` (`-snake_interwarp_scope`).
+
+**Next:** your decision on S6 (keep the paper-faithful defaults; whether to try a more latency-bound baseline), and on Tier 2 (117 jobs, ≈ 40 core-hours, ≈ 2.7 h).

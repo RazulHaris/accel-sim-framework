@@ -452,6 +452,16 @@ The ablations come from these flags:
       - `results/final_tier1.md`, `results/final_tier1.csv`.
     - **Deviation:** the power slowdown needed a power-off reference under the same load, so 2 runs (paired off/on) were added to the 1 smoke run.
     - **Tier 2 waits for approval.**
+- **S6: IPC investigation** (2026-10-16, on request: "why is there no IPC improvement; try to fix it").
+  - **Code:** gpgpu-sim `e85e7eb1` adds `-snake_interwarp_scope` (S6 experiment, default 0 = OQ-8 unchanged); the warp-init hook now passes the global warp id. accel-sim `40d0a04` (`PERFECT_MEM`), `4502b2d` (`SNAKE_IWS1/2`); clean build `4502b2d`/`e85e7eb1`.
+  - **Gates:** synthetic PASS (`sim_run_snake_synth/S6`, 11; the Snake-DT runs equal S4b); off-regression PASS on 6 (`sim_run_snake_regress/S6`).
+  - **Runs:**
+    - 8 perfect-memory ceilings (`sim_run_snake_gate/S6_ceiling`, S5 frozen build, 1B, no nw)
+    - 6 scope runs at 100M (`S6_scope`: hotspot 512, srad_v1, histo × scope 1, 2)
+    - 2 backprop scope runs at 1B (`S6_scope_bp`)
+  - **Findings** (results/S6_ipc.md): perfect memory gains < 5% on hotspot, mri-q and lud. backprop and histo are DRAM-queue bound; srad_v1 and mri-q are limited by the miss queue and MSHRs. Inter-warp lead is ~20 cycles; scope 2 makes backprop timely (accuracy 14%) without IPC (DRAM-bound).
+  - **Outcome:** no Snake change raises IPC on these workloads; the defaults stay paper-faithful.
+  - **Deviation:** an investigation stage with code (an opt-in option) and 22 runs beyond the S5 plan, on the user's request.
   - *Done when:* the sweep run dirs generate and the plots/tables are reproducible.
 
 ## 9. Verification

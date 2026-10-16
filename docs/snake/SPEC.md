@@ -170,6 +170,7 @@ Format: interpretation (confidence).
 - **OQ-7 Chain depth.** Config `snake_max_chain_depth`, default 3. Paper gives no number; Fig. 13 shows depth 2. Throttling can reduce it to 0. (low)
   - **S4:** §3.2 says the chain length is "controlled by the throttling mechanism", without a value. While throttled (OQ-10), the inter-thread chain stops at `-snake_throttle_chain_depth` (default 1): the warp's next load is still predicted, the deeper steps are not. Chain steps cut this way are counted in `snake_throttle_chain_cut`. (low)
 - **OQ-8 Inter-warp targets.** Prefetch for the next `snake_interwarp_degree` (default 4) warp IDs above w that are resident on the SM and in the same CTA. "All future warps" is unbounded. (low)
+  - **S6 experiment, `-snake_interwarp_scope`** (default 0 = this reading): 1 = the next warps by global warp id among all resident warps of the kernel; 2 = the same warp index in the next resident CTAs, i.e. "all future warps" across CTAs. Both assume addresses linear in the global warp id (1D grids). Results: results/S6_ipc.md §3; kept off by default.
   - **Implemented (S3b):** the targets are the next 4 warp slots above w that were initialised in the same HW CTA slot and have not exited (`shader_core_ctx::warp_active`); exited warps are skipped, not counted. Each target's address is a + (w₂ − w)·S_iw, with the triggering load's lane descriptor (OQ-9).
 - **OQ-9 Prefetch footprint.** **Revised 2026-10-13 (S2c):** selected by `-snake_footprint`. In S2c the option and the storage exist; requests are issued from S3 on.
   - **0 = line (default).** One 128 B line per predicted warp address: the line holding the address, requesting only the sectors that are missing in L1. Nothing extra is stored. Storage stays the paper's **768 B** per SM (Head 448 B + Tail 320 B, Tab. 3).
@@ -339,6 +340,16 @@ OQ-19…OQ-28 (simulator-specific questions, the decisions on clock, Rodinia ver
 - **Paper-vs-simulator timing discrepancy (recorded in S5).** In hotspot, useful prefetches are used a median of **897 cycles** after issue (p90 1,699; `snake_dist_lead_issue_inter_warp_timely`, S4b). The paper says prefetched data is "typically consumed within 50 cycles" (§3.2, footnote 3). The 50-cycle stale rule (OQ-12, variant 1) therefore evicts good prefetches in our simulator. This is a timing discrepancy between the paper and our simulator, not a fault in the rule. Tier 2 measures `-snake_pf_stale_cycles` 200 and 1000.
 - **Energy (Fig. 19) stays unavailable (S5 pre-flight, 2026-10-15).** The base repo has AccelWattch for QV100 SASS (`Accelwattch_SASS_SIM`, `accelwattch_sass_sim.xml`). With it on, hotspot 512 (baseline, run side by side with the same job with power off) takes 66.0 s instead of 42.5 s: **+55% wall time** (+63% user CPU), with identical cycles (19,686). That is above the 30% limit set for the final runs, so no POWER configs were added. `compare_paper.py` reports Snake's own energy (OQ-16) and "unavailable" for normalized energy.
 - **lud's remaining §5.7 miss comes from request-slot throttling** (OQ-10): Snake-T is within 1% of Snake-DT, and throttling cuts issued prefetches by 30%. Tier 2 measures the bytes-based meter (`SNAKE_BWBYTES`).
+
+### Why Snake does not raise IPC in our simulator (S6, results/S6_ipc.md)
+- **Little latency to hide.** With perfect memory (`-gpgpu_perfect_mem`), IPC rises only +0.6–0.9% (hotspot), +1.7% (mri-q) and +4.4–4.8% (lud), against the paper's Snake gains of +13%, +4% and +18%. Load waits (`W0_Scoreboard`) are 3–5% of scheduler cycles in hotspot: other warps already hide the latency.
+- **Headroom elsewhere is bandwidth.**
+  - backprop (+47% ceiling) and histo (+30%) are DRAM-queue bound (0.9M and 1.8M DRAM-full stalls). Prefetching reads the same 434k DRAM sectors (backprop) and raises the average memory latency (1,015 → 1,124 cycles).
+  - srad_v1 (+22.5%) and mri-q are limited by the L1 miss queue and MSHRs: one request per cycle, and bursty demand.
+- **Lead time.** Inter-warp predictions within a CTA come ~20 cycles before use (latency 350–1,000).
+  - `-snake_interwarp_scope 2` (same warp index in later resident CTAs; S6 experiment, default 0) makes backprop's prefetches timely: accuracy 0.2 → 14.0%, lead 1,602 cycles. IPC stays flat (+0.07%) because backprop is DRAM-bound.
+  - Scope 2 is wrong on 2D grids (hotspot −4.7%).
+- The paper's GPU was evidently more latency-bound (its Figs. 3–5: memory stalls 55% of stalls); that, more than the prefetcher, explains the IPC gap.
 
 ### Observations per stage
 - **S4 (results/S4.md).**
