@@ -343,6 +343,14 @@ SNAKE_Q64:
 SNAKE_ISSUE2:
     extra_params: "-snake_issue_width 2"
 
+# S6 experiment (OQ-8 extension): inter-warp targets beyond the CTA.  1 = the
+# next warps by global warp id among all resident warps; 2 = the same warp
+# index in the next resident CTAs.  Default 0 = same CTA (paper reading).
+SNAKE_IWS1:
+    extra_params: "-snake_interwarp_scope 1"
+SNAKE_IWS2:
+    extra_params: "-snake_interwarp_scope 2"
+
 # S6 IPC investigation: the latency ceiling.  L1 misses still use the L1D and
 # its miss queue, but the memory system answers at once (no L2/DRAM latency);
 # the most a prefetcher could gain in this simulator.
