@@ -59,9 +59,8 @@ def gmean(xs):
     return math.exp(sum(math.log(x) for x in xs) / len(xs))
 
 
-def main():
-    runs = sys.argv[1]
-    cfg = sys.argv[2] if len(sys.argv) > 2 else "QV100-SASS-PAPER_V100-100M_INSN"
+def collect(runs, cfg="QV100-SASS-PAPER_V100-100M_INSN"):
+    """One dict per workload (the rows of the tables below)."""
     rows = []
     for p in sorted(glob.glob(os.path.join(runs, "*", "*", cfg, "sim.out"))):
         app_dir, args = p.split(os.sep)[-4:-2]
@@ -97,6 +96,13 @@ def main():
         r["fig5"] = sb / tot if tot else None
         r["fig5b"] = (sb + stall) / tot if tot else None
         rows.append(r)
+    return rows
+
+
+def main():
+    runs = sys.argv[1]
+    cfg = sys.argv[2] if len(sys.argv) > 2 else "QV100-SASS-PAPER_V100-100M_INSN"
+    rows = collect(runs, cfg)
 
     print("### Fig. 3: reservation-fail rate and causes\n")
     print("| workload | L1D accesses | RESERVATION_FAIL | rate | paper | of fails: MISS_QUEUE_FULL / MSHR entry / MSHR merge / line alloc | fails from reads / writes |")
