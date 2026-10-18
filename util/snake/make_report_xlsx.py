@@ -370,6 +370,11 @@ def main():
              % ("{:,}".format(f["bp_dram"][0]), "{:,}".format(f["bp_dram"][1]), f["bp_lat"][0], f["bp_lat"][1]), "S6_ipc.md §2"),
             ("Trace decoding: pre-756ed33 traces mis-decode predicated lanes; fixed in accel-sim fe8f37e (backprop L1D read hits %+.0f%%, cycles %+.2f%%, 100M)."
              % ((bp_tf[5] / bp_tf[4] - 1) * 100, bp_tf[3]), "VERSION_DIFF.md 'Pre-756ed33 traces'; Trace_fix sheet"),
+            ("Best-performing kernel (Best_kernel sheet): predicted coverage %.1f%% vs the paper's %.1f%%, timely accuracy %.1f%% vs %.1f%%, speedup %+.1f%% vs %+.1f%% (GMEAN; whole run %+.1f%%). Closest: backprop %+.2f%% (best over variants %+.2f%%) vs %+.0f%%; histo %+.1f%% (%.0f%% of the paper's %+.0f%%)."
+             % (f["bk"][8], f["bk"][7], f["bk"][11], f["bk"][10], f["bk"][4], f["bk"][3], f["bk"][5],
+                f["bk_rows"]["backprop"][4], f["bk_rows"]["backprop"][14], f["bk_rows"]["backprop"][3],
+                f["bk_rows"]["histo"][4], 100 * f["bk_rows"]["histo"][4] / f["bk_rows"]["histo"][3], f["bk_rows"]["histo"][3]),
+             "K1_best_kernel.md; Best_kernel sheet"),
             ("Energy (Fig. 19) is unavailable: AccelWattch costs %s simulation time (paired run), above the 30%% limit."
              % (("%+.0f%%" % f["power"]) if f["power"] is not None else "n/a"), "SPEC §8; final_tier1.md §0"),
         ]
@@ -981,6 +986,73 @@ def main():
                 [Col("term"), Col("definition / formula"), Col("source"), Col("Status"), Col("Notes")],
                 [[a, b_, c, d, ""] for a, b_, c, d in gl])
 
+    # ======================= 2. Best_kernel (moved after Summary)
+    variants = [("Snake (exact)", "sim_run_snake", S, B), ("Snake (line)", "sim_run_snake", B + "-SNAKE", B),
+                ("Snake-DT", "sim_run_snake_dt", B + "-SNAKE_DT-SNAKE_FP1", B),
+                ("Snake-T", "sim_run_snake_t", B + "-SNAKE_T-SNAKE_FP1", B),
+                ("s-Snake", "sim_run_ssnake", B + "-S_SNAKE-SNAKE_FP1", B),
+                ("Snake-ISO", "sim_run_snake", B + "-SNAKE_ISO-SNAKE_FP1", B),
+                ("PAPER_LAT Snake (exact)", "sim_run_snake", B + "-PAPER_LAT-SNAKE-SNAKE_FP1", B + "-PAPER_LAT")]
+    cols = [Col("workload"), Col("best kernel (Snake exact)"), Col("run-time share", "pct"),
+            Col("paper IPC gain (Fig. 18)", "gain"), Col("best-kernel speedup", "gain2"), Col("whole-run speedup (full run, incl. capped last launch)", "gain2"),
+            Col("kernel perfect-L1 ceiling", "gain"), Col("paper coverage (Fig. 16)", "pct"),
+            Col("best kernel: predicted coverage", "pct"), Col("best kernel: delivered coverage", "pct"),
+            Col("paper accuracy (Fig. 17)", "pct"), Col("best kernel: timely accuracy", "pct"),
+            Col("best kernel: L1 hit base", "pct"), Col("best kernel: L1 hit Snake", "pct"),
+            Col("best over 7 Tier 1 variants: speedup", "gain2"), Col("that variant"), Col("that kernel"),
+            Col("Status"), Col("Notes")]
+    rows, bk_app, BKV = [], {}, {}
+    for a, g in WL:
+        ap = app_of(a)
+        bpath = lambda c: os.path.join(ROOT, "sim_run_baseline", "runs", a, g, c, "sim.out")
+        kr, capped = kernel_rows(bpath(B), os.path.join(ROOT, "sim_run_snake", "runs", a, g, S, "sim.out"),
+                                 os.path.join(d1, "D1_pl1d", "runs", a, g, B + "-PERFECT_L1D", "sim.out"))
+        bk = best_of(kr)
+        bestv = None
+        for vlab, vd, vc, vb in variants:
+            vk, _ = kernel_rows(bpath(vb), os.path.join(ROOT, vd, "runs", a, g, vc, "sim.out"))
+            vb_ = best_of(vk)
+            if vb_ and (bestv is None or vb_["m"]["gain"] > bestv[1]["m"]["gain"]):
+                bestv = (vlab, vb_)
+        BKV[wl_label(a, g)] = bestv
+        whole = gain(snake[(a, g)], base[(a, g)])
+        m_ = bk["m"]
+        rows.append([wl_label(a, g), bk["name"], bk["share"], paper[ap][2], m_["gain"], whole, bk["ceil"],
+                     paper[ap][0], m_["cov_pred"], m_["cov_paper"], paper[ap][1], m_["acc"], m_["hit_b"], m_["hit_s"],
+                     bestv[1]["m"]["gain"], bestv[0], bestv[1]["name"], DIAG,
+                     "best = largest Snake speedup among kernels with >= 1% of the run time (selection uses Snake's own result)"
+                     + ("; last launch at the 1B cap excluded" if capped else "")])
+        bk_app.setdefault(ap, []).append((m_, bk["ceil"], bestv[1]["m"]["gain"], whole))
+    gk = lambda f: (gmean([gmean([1 + f(v) / 100 for v in vs]) for vs in bk_app.values()]) - 1) * 100
+    ak = lambda f: mean([mean([f(v) for v in vs]) for vs in bk_app.values()])
+    rows.append(["7-app GMEAN / mean", None, None, (gmean([1 + paper[x][2] / 100 for x in APPS]) - 1) * 100,
+                 gk(lambda v: v[0]["gain"]), gk(lambda v: v[3]), gk(lambda v: v[1]), mean([paper[x][0] for x in APPS]),
+                 ak(lambda v: v[0]["cov_pred"]), ak(lambda v: v[0]["cov_paper"]), mean([paper[x][1] for x in APPS]),
+                 ak(lambda v: v[0]["acc"]), ak(lambda v: v[0]["hit_b"]), ak(lambda v: v[0]["hit_s"]),
+                 gk(lambda v: v[2]), None, None, DIAG,
+                 "speedups: GMEAN over apps (inputs averaged first); rates: mean over apps; kernel and share n/a for an average"])
+    bk_rows = rows
+    FIND["bk"] = bk_rows[-1]
+    FIND["bk_rows"] = {r[0]: r for r in bk_rows}
+
+    def bk_extra(ws, hr):
+        n = len(bk_rows)
+        cats = Reference(ws, min_col=1, min_row=hr + 1, max_row=hr + n)
+        for k, (title, cols_, yt) in enumerate((
+                ("Best kernel: IPC gain, paper vs best kernel vs whole run vs kernel ceiling", (4, 5, 6, 7), "IPC gain (%)"),
+                ("Best kernel: coverage and accuracy vs the paper", (8, 9, 11, 12), "% of demand sectors"))):
+            ch = BarChart()
+            ch.type, ch.title, ch.y_axis.title = "col", title, yt
+            ch.height, ch.width = 9, 24
+            for c in cols_:
+                ch.add_data(Reference(ws, min_col=c, min_row=hr, max_row=hr + n), titles_from_data=True)
+            ch.set_categories(cats)
+            ws.add_chart(ch, "A%d" % (hr + n + 3 + k * 20))
+    write_sheet(wb, "Best_kernel",
+                ["Best-performing kernel per workload vs the paper's per-benchmark values (the mentor's hypothesis: the paper may report its best kernel). Tier 1 runs, 1B, PAPER_V100; ceilings from D1_pl1d.",
+                 "Caveat: the kernel is selected by Snake's own speedup (>= 1% of run time), so it is an optimistic view. Same data as PerKernel and K1_best_kernel.md; last columns: best kernel over all 7 Tier 1 Snake variants."],
+                cols, rows, bk_extra)
+
     # ======================= cross-checks (rule 2)
     do_crosschecks(WL, base, snake, pl, pm, T1, summary_rows, ceil, s6)
     src = "results/K1_best_kernel.md §1"
@@ -996,6 +1068,15 @@ def main():
         xcheck("K1", lab_ + " best-kernel ceiling", ours[2], num(ck), dec(ck), src)
         n += 2
     CHECKS.append(("PerKernel best kernel vs K1_best_kernel.md §1", n, len(MISMATCH) - n0, src))
+    src = "results/K1_best_kernel.md §2"
+    n0, n = len(MISMATCH), 0
+    for lab_, cell in K1V_DOC.items():
+        if lab_ in BKV and BKV[lab_]:
+            t = cell.replace("**", "").replace("−", "-")
+            xcheck("K1 §2", lab_ + " best over variants", BKV[lab_][1]["m"]["gain"], num(t),
+                   len(re.sub(r"[^\d.]", "", t.split("%")[0]).split(".")[1]) if "." in t.split("%")[0] else 0, src)
+            n += 1
+    CHECKS.append(("Best_kernel (best over 7 variants) vs K1_best_kernel.md §2", n, len(MISMATCH) - n0, src))
     # computed inputs of the key findings
     FIND.update(dict(
         lead=[(T1[(S, a, g)][1]["dists"].get("lead_pred_inter_warp") or (0, None, None))[1] for a, g in WL
@@ -1013,6 +1094,7 @@ def main():
         covr=[r[6] for r in summary_rows[:-1] if r[0] in ("hotspot 512", "hotspot 1024", "srad_v1", "mri-q")]))
     write_sheet(wb, "Summary", *SUMMARY)
     wb.move_sheet("Summary", offset=-(len(wb.sheetnames) - 1))
+    wb.move_sheet("Best_kernel", offset=-(wb.sheetnames.index("Best_kernel") - 1))
 
     # ======================= 16. Provenance
     rows = []
@@ -1183,6 +1265,9 @@ def do_crosschecks(WL, base, snake, pl, pm, T1, summary_rows, ceil, s6):
     n0, n = len(MISMATCH), 0
     pk = {}
     for head, rows in md_tables(os.path.join(DOCS, "results", "K1_best_kernel.md")):
+        if rows and rows[0][:2] == ["workload", "best gain (variant, kernel)"]:
+            for cells in rows[1:]:
+                K1V_DOC[cells[0]] = cells[1]
         if not rows or not rows[0][0] == "workload" or "best kernel (share of baseline cycles)" not in rows[0][1]:
             continue
         for cells in rows[1:]:
@@ -1196,6 +1281,41 @@ FIND = {}
 ABL_GM = []
 LUD_KMAX = None
 TF_ROWS = []
+
+
+def kernel_rows(bp, sp, pp=None):
+    """Per-kernel metrics of a baseline / Snake (/ perfect-L1) run pair, as in
+    per_kernel.py; the last launch of a capped run is excluded."""
+    (lb, cb), (ls, cs) = launches(bp), launches(sp)
+    db, ds = deltas(lb), deltas(ls)
+    dp, cp = None, False
+    if pp:
+        lp, cp = launches(pp)
+        dp = deltas(lp)
+    n = min(len(db), len(ds), len(dp) if dp else 10 ** 9) - (1 if (cb or cs or cp) else 0)
+    tot = sum(db[i][2] for i in range(n))
+    per = {}
+    for i in range(n):
+        assert db[i][1] == ds[i][1] and (dp is None or dp[i][1] == db[i][1])
+        e = per.setdefault(db[i][1], [{}, {}, {}, 0])
+        k_add(e[0], *db[i][2:5])
+        k_add(e[1], *ds[i][2:5])
+        if dp:
+            k_add(e[2], *dp[i][2:5])
+        e[3] += 1
+    out = []
+    for name, (eb, es, ep, cnt) in per.items():
+        out.append(dict(name=name, launches=cnt, share=100.0 * eb["cyc"] / tot, m=k_metrics(eb, es),
+                        ceil=(eb["cyc"] / ep["cyc"] - 1) * 100 if ep.get("cyc") else None))
+    return out, bool(cb or cs or cp)
+
+
+def best_of(krows):
+    elig = [k for k in krows if k["share"] >= 1.0 and k["m"]["gain"] is not None]
+    return max(elig, key=lambda k: k["m"]["gain"]) if elig else None
+
+
+K1V_DOC = {}
 
 
 def power_slowdown():
