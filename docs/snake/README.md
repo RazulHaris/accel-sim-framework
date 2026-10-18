@@ -161,4 +161,12 @@ Gates:
 - **Runs:** 42 (18 perfect memory on Tier 1's frozen build, 18 perfect L1D, 6 off-regression).
 - **Commits:** accel-sim `ac28769` (token, normalizer) and the D1 results commit; gpgpu-sim `7ed7810e`.
 
+**K1: does the paper report its best-performing kernel? (2026-10-18, no new runs).** Details: `results/K1_best_kernel.md`; script `util/snake/per_kernel.py` (per-launch differences of the per-kernel stats blocks).
+- **IPC.** The best kernel matches the paper only for backprop (+1.37% vs +1%, line footprint).
+  - histo rises from −1.9% (whole run) to +11.5–12.0% on `histo_intermediates_kernel` (paper +33%).
+  - srad_v1 +2.6% (paper +29%), lud ≤ +1.0% (+18%), hotspot ≤ +0.3% (+13%), mri-q ≤ +0.3% (+4%), nw 0 (+5%).
+- **Per-kernel ceiling.** Even a perfect L1 gives at most +0.33% on hotspot and +8.5% on lud's best kernel, below the paper. Kernel selection cannot explain those two.
+- **Coverage (predicted) of the best kernels is close to the paper:** hotspot 91–93 vs 88, srad_v1 92 vs 87, lud 83–86 vs 91, mri-q 88 vs 72, histo 83 vs 97.
+- **Accuracy is not:** 0–27% (Snake-ISO hotspot 32%) vs 60–96%.
+
 **Next:** your go-ahead on Phase 1. Tier 2 (117 jobs) also still awaits approval.

@@ -357,6 +357,10 @@ OQ-19…OQ-28 (simulator-specific questions, the decisions on clock, Rodinia ver
   - **Perfect-L1 gains:** hotspot +0.1–0.3%, mri-q +2%, lud +3–4%; srad_v1 +21%, nw +17%, histo +39%, backprop +42%.
   - GMEAN: +16.6% (PAPER_V100) and +17.9% (PAPER_LAT), against the paper's +14.1% and Snake's −0.3% / −0.2%.
   - Both ceilings also remove the loads' memory traffic, so for the DRAM- or miss-queue-bound apps they are upper bounds that a real prefetcher cannot reach.
+- **K1: per-kernel view (results/K1_best_kernel.md).** If the paper reported each benchmark's best-performing kernel:
+  - Our best kernels match its predicted coverage within about ±15 pp, and backprop's IPC gain (+1.4% vs +1%).
+  - They do not match accuracy (≤ 27–32% vs 60–96%) or the other IPC gains. Best kernel vs paper: histo +12% vs +33%, srad_v1 +2.6% vs +29%, lud +1.0% vs +18%, hotspot +0.3% vs +13%.
+  - For hotspot and lud even a perfect L1 on the best kernel stays below the paper (+0.33%, +8.5%), so kernel selection does not explain the gap.
 
 ### Observations per stage
 - **S4 (results/S4.md).**
