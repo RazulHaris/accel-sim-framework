@@ -99,17 +99,17 @@ On a load (w, p, a):
 
 ## 5. Evaluation setup (§4 p.736, Tab. 1, Tab. 2)
 - **Simulator:** Accel-Sim v1.2.0 with AccelWattch v1.0. The **V100** model has 80 SMs, 1530 MHz, GTO, and 4 schedulers/SM.
-- **Per SM:** 2048 threads, 64K registers.
+- **Per SM:** 2048 threads; register file "65536" (Table 1 gives no unit; our `-gpgpu_shader_registers 65536` counts 32-bit registers).
 - **Unified cache:** 128 KB, 256-way, 128 B lines, 4 banks, 28-cycle.
 - **MSHR:** 512 entries, merge 8.
-- **Other caches:** L1I 128 KB 16-way; constant 64 KB 8-way 64 B.
+- **Other caches:** L1I 128 KB 16-way 128 B; constant 64 KB 8-way 64 B.
 - **L2:** 96 KB/sub-partition, 24-way, 128 B, 64 banks, 212-cycle.
-- **DRAM (ns):** tCCD=1 tRRD=3 tRCD=12 tRAS=28 tRP=12 tRC=40 tCL=12 tWL=2 tCDLR=3 tWR=10 tCCDL=2 tRTPL=3.
+- **DRAM (labelled "(ns)" in Table 1):** tCCD=1 tRRD=3 tRCD=12 tRAS=28 tRP=12 tRC=40 tCL=12 tWL=2 tCDLR=3 tWR=10 tCCDL=2 tRTPL=3. These equal the QV100 config's `-gpgpu_dram_timing_opt`, which the simulator counts in DRAM clock cycles at 850 MHz (1 cycle = 1.176 ns), not ns (results/paper_specs.md Part 1).
 - **Run length:** to completion or **1 B instructions**.
 - **Benchmarks (Tab. 2), 11 total; inputs not given → OQ-13:**
   - ISPASS: CP, LPS, LIB, MUM.
   - Rodinia: backprop, hotspot, srad, lud, nw.
-  - Parboil: histo, mri-q.
+  - Parboil: histo, mri-q (abbreviated "MRQ" in Table 2).
 - **Comparison points (§4):** INTRA, INTER, MTA, CTA-Aware, Tree (64 KB chunks), s-Snake (chains only), Snake-DT (no decoupling or throttling), Snake-T (decoupling, no throttling), Snake+CTA.
 - **Metrics (§4):**
   - IPC and energy.

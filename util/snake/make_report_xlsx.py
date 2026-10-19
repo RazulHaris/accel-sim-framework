@@ -986,6 +986,34 @@ def main():
                 [Col("term"), Col("definition / formula"), Col("source"), Col("Status"), Col("Notes")],
                 [[a, b_, c, d, ""] for a, b_, c, d in gl])
 
+    # ======================= Paper_specs (results/paper_specs.md Parts 1 and 4)
+    ps = {h.split(".")[0]: t for h, t in md_tables(os.path.join(DOCS, "results", "paper_specs.md"))
+          if h.startswith(("Part 1.", "Part 4."))}
+    rows = []
+    for cells in ps["Part 1"][1:]:   # parameter, paper, page, option, base, PAPER_V100, PAPER_LAT, status, notes
+        assert len(cells) == 9, cells
+        rows.append(["Table 1", cells[0], cells[1], cells[2], cells[3], cells[4], cells[5], cells[6], "",
+                     cells[7], cells[8]])
+    for cells in ps["Part 4"][1:]:   # item, paper, page, option, default, paper-literal, status, OQ
+        assert len(cells) == 8, cells
+        rows.append(["Snake", cells[0], cells[1], cells[2], cells[3], cells[4], "", cells[5], cells[7],
+                     cells[6], ""])
+    rows = [[re.sub(r"\*\*|`", "", str(v)) for v in r] for r in rows]
+
+    def ps_extra(ws, hr):
+        col = {"Match": "C6EFCE", "Differs": "FFC7CE", "Paper": "FFEB9C", "Measured": "DDEBF7", "Not": "D9D9D9"}
+        for i in range(len(rows)):
+            c = ws.cell(row=hr + 1 + i, column=10)
+            k = str(c.value).split()[0]
+            if k in col:
+                c.fill = PatternFill("solid", fgColor=col[k])
+    write_sheet(wb, "Paper_specs",
+                ["Paper specifications vs our effective simulator values: Table 1 (printed p.736) and Snake's own parameters (§3, §5.4, §5.5, Table 3). Parsed from docs/snake/results/paper_specs.md (Parts 1 and 4), which also covers Parts 2, 3, 5 and 6.",
+                 "Table 1 rows: base QV100 / PAPER_V100 / PAPER_LAT are effective values from the run option dumps. Snake rows: 'base / default' = registered default, 'paper-literal' = closest setting to the paper's text. Status here = Match | Differs | Paper ambiguous | Not in paper | Measured vs setting."],
+                [Col("group"), Col("parameter"), Col("paper (verbatim)"), Col("page"), Col("simulator option(s)"),
+                 Col("base QV100 / our default"), Col("PAPER_V100"), Col("PAPER_LAT / paper-literal"), Col("OQ"),
+                 Col("Status"), Col("Notes")], rows, ps_extra)
+
     # ======================= 2. Best_kernel (moved after Summary)
     variants = [("Snake (exact)", "sim_run_snake", S, B), ("Snake (line)", "sim_run_snake", B + "-SNAKE", B),
                 ("Snake-DT", "sim_run_snake_dt", B + "-SNAKE_DT-SNAKE_FP1", B),
