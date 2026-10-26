@@ -7,8 +7,9 @@
 #             or a frozen build directory (accel-sim.out + lib/libcudart.so),
 #             e.g. /home/razul/snake/bin_ref_v2.
 #   <configs> comma-separated run_simulations.py configs.
-#   APPS      run_simulations.py -B selectors (rodinia-3.1 and parboil apps
-#             go to their trace roots); default: the 7 suite apps (§10).
+#   APPS      run_simulations.py -B selectors (rodinia-3.1, rodinia_2.0-ft and
+#             parboil apps go to their trace roots); default: the 7 suite
+#             apps (§10).
 #   ONLY      extended regex over <app>/<args>/<config>: only matching jobs
 #             are kept and run (the others are removed before anything runs),
 #             e.g. to run one input of an app with several (S3c).
@@ -58,9 +59,12 @@ tags="$(strings "$BIN/accel-sim.out" | grep -o 'accelsim-commit-[^ "]*' | head -
 [ "$(echo "$tags" | grep -o '_modified_0\.0' | wc -l)" = 2 ] || { echo "ABORT: build is not _modified_0.0 twice"; exit 1; }
 
 ROD=$(echo "$APPS" | tr ',' '\n' | { grep '^rodinia-3.1' || true; } | paste -sd, -)
+ROD2=$(echo "$APPS" | tr ',' '\n' | { grep '^rodinia_2.0-ft' || true; } | paste -sd, -)
 PB=$(echo "$APPS" | tr ',' '\n' | { grep '^parboil' || true; } | paste -sd, -)
 [ -z "$ROD" ] || python3 util/job_launching/run_simulations.py -B "$ROD" -C "$CFGS" \
     -T hw_run/rodinia-3.1/11.0 -N "$(basename "$OUT")_rod" -r "$OUT/runs" -n >/dev/null
+[ -z "$ROD2" ] || python3 util/job_launching/run_simulations.py -B "$ROD2" -C "$CFGS" \
+    -T hw_run/rodinia_2.0-ft/11.0 -N "$(basename "$OUT")_rod2" -r "$OUT/runs" -n >/dev/null
 [ -z "$PB" ] || python3 util/job_launching/run_simulations.py -B "$PB" -C "$CFGS" \
     -T hw_run/parboil -N "$(basename "$OUT")_pb" -r "$OUT/runs" -n >/dev/null
 if [ -n "${ONLY:-}" ]; then

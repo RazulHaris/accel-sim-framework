@@ -351,6 +351,28 @@ SNAKE_IWS1:
 SNAKE_IWS2:
     extra_params: "-snake_interwarp_scope 2"
 
+# SK_SC: Snake as SnakeCharmer's baseline "SK" sets it (Tang et al., MICRO
+# 2026, arXiv 2610.30990, §III-A): one 128-entry prefetch queue; maximum
+# prefetch distances 10 (inter-PC chain), 8 (intra-warp, every iteration
+# 1..8, OQ-34) and 63 (inter-warp: lagging resident warps by global warp id,
+# nearest first, OQ-33); prefetch once a training confidence reaches 3
+# (OQ-35).  Use on top of SNAKE-SNAKE_FP1.
+SK_SC:
+    extra_params: "-snake_queue_size 128
+    \n-snake_max_chain_depth 10
+    \n-snake_chain_deep_promoted 1
+    \n-snake_intra_distance 8
+    \n-snake_intra_distance_mode 0
+    \n-snake_interwarp_scope 1
+    \n-snake_interwarp_degree 63
+    \n-snake_promote_warps 3
+    \n-snake_intra_confirm_warps 3
+    \n-snake_interwarp_min_warps 3"
+# SK_SC with the inter-warp targets kept in the warp's CTA (up to 63); use
+# after SK_SC (the later value wins).
+SK_SC_CTA:
+    extra_params: "-snake_interwarp_scope 0"
+
 # S6 IPC investigation: the latency ceiling.  L1 misses still use the L1D and
 # its miss queue, but the memory system answers at once (no L2/DRAM latency);
 # the most a prefetcher could gain in this simulator.
