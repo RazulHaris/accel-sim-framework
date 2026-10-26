@@ -37,6 +37,7 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
 | S4 throttling + decoupling; PAPER_LAT L1 knob 23 | **gate stopped** (stop rule) | `f708b4f` (results: `snake: S4 results`) | `57103274` | PAPER_LAT measures L1 28.0 / L2 212.0 (`sim_run_snake_calib/paper_lat23`); synthetic PASS (`sim_run_snake_synth/S4`, 11 runs: Snake-DT runs equal S3e; trace (b) under full Snake throttled 89.4%, 0 issued); off-regression vs `bin_ref_v2` PASS on 6 (`sim_run_snake_regress/S4`); 15 runs (`sim_run_snake_gate/S4`) finish, all invariants OK, no quota assert. **Stop:** mode 1 lowers the demand L1 hit rate vs Snake-DT by > 2% on hotspot (Snake −19.6%, Snake-T −20.6%) and lud (Snake −5.1%); IPC within 2%. `docs/snake/results/S4.md` |
 | S4b revised decoupling mode 1 (`-snake_decouple_variant 1`) + cap diagnosis | done; §5.7 target missed (kept, gap in SPEC §8) | `7af4b95`, `d06395d` (results: `snake: S4b results`) | `3f635b67` | synthetic PASS (`sim_run_snake_synth/S4b`, 11); off-regression PASS on 6 (`sim_run_snake_regress/S4b`); 5 step-1 runs (`S4b_diag`) + 10 gate runs (`S4b`), all invariants OK; variant 0 = S4 exactly. Hit rate v1 vs ISO / DT: hotspot 26.6 vs 32.5 / 32.3 (miss), lud 8.2 vs 8.3 / 8.4 (−3.0%, miss), histo, mri-q, srad_v1 meet it. `docs/snake/results/S4.md` (S4b) |
 | S5 final-evaluation configs + tooling (no runs) | done; Tier 1 run (below) | `2c3a333` (results: `snake: S5 dry-run and estimate`) | — (`3f635b67`) | Tier 1 21 configs / 189 runs, Tier 2 13 / 117; dry-run generated 11 run dirs (306 jobs, frozen build `2c3a333`/`3f635b67`, no sim.out); 2 smoke runs parse every new token; estimate Tier 1 ≈ 3.8 h (56.5 core-hours), Tier 2 ≈ 2.3 h (35.0) at 15 parallel. `docs/snake/results/S5.md` |
+| SK_SC: SnakeCharmer's Snake baseline (options, SnakeCharmer metrics, 87 runs) | done | `5d55de3`, `dc1a98c` (results: `snake: SK_SC results`) | `9622012e` | off-regression vs `bin_ref_v2` PASS on 6 (`sim_run_snake_regress/SK_SC`); synthetic PASS (11, identical to S6 apart from the new lines; `sim_run_snake_synth/SK_SC`); default Snake identical to S4b on its 5 PAPER_V100 runs; 87 runs at 100M (`sim_run_snake_skc`), all invariants OK; SK_SC_CTA run because hotspot dropped > 2%. `docs/snake/results/SK_SC.md` |
 
 **Reference build for the off-regression (§9.1), from 2026-10-13:** `/home/razul/snake/bin_ref_v2/` = the clean bases plus the trace-parser fix `fe8f37e` only (cherry-picked as `6c28685` on local branch `snake-ref-v2`; `accelsim-commit-6c28685_modified_0.0`, `gpgpu-sim_git-commit-6c3cf4ff_modified_0.0`; built in the worktree `/home/razul/snake/src_ref_v2`; checksums in its `BUILD_INFO.txt`). See VERSION_DIFF "Pre-756ed33 traces".
 **Previous reference, kept as `/home/razul/snake/bin_ref_paperera/` (was `bin_ref`, used for S1–S2b):** it holds `accel-sim.out` plus `lib/libcudart.so`, which contains the gpgpu-sim model. It was built 2026-10-08 from the clean bases (`accelsim-commit-3016c65_modified_0.0`, `gpgpu-sim_git-commit-6c3cf4ff_modified_0.0`); checksums are in `BUILD_INFO.txt`.
@@ -107,7 +108,7 @@ Companion docs: [SPEC](SPEC.md) · [VERSION_DIFF](VERSION_DIFF.md) · [CODE_MAP]
 
 **New (accel-sim)**
 - `docs/snake/*.md`
-- `util/job_launching/configs/define-standard-cfgs.yml` entries: `SNAKE`, `SNAKE_DT`, `SNAKE_T`, `S_SNAKE`, `SNAKE_ISO`, `PAPER_V100` (GTO + 1530 MHz clock), `PAPER_V100_1132` (GTO, stock 1132 MHz; OQ-23 sensitivity run)
+- `util/job_launching/configs/define-standard-cfgs.yml` entries: `SNAKE`, `SNAKE_DT`, `SNAKE_T`, `S_SNAKE`, `SNAKE_ISO`, `PAPER_V100` (GTO + 1530 MHz clock), `PAPER_V100_1132` (GTO, stock 1132 MHz; OQ-23 sensitivity run), `SK_SC` and `SK_SC_CTA` (SnakeCharmer's SK settings, SPEC OQ-33)
 - `util/job_launching/apps/` snake-paper suite
 - `util/job_launching/stats/snake_stats.yml`
 - `util/snake/gen_synthetic_traces.py` (S2 microbenchmarks)
@@ -205,7 +206,10 @@ Budget with Snake on: **≤15% slower** simulation. With Snake off: **within run
 | `snake_intra_confirm_warps` | uint | 3 | §3.4 |
 | `snake_interwarp_min_warps` | uint | 3 | §3.1 |
 | `snake_demote_removed` | uint | 2 | ">2 removed → untrained" (§3.2) |
-| `snake_max_chain_depth` | uint | 3 | OQ-7 |
+| `snake_max_chain_depth` | uint | 3 | OQ-7; at most 10 (SK_SC sets 10) |
+| `snake_chain_deep_promoted` | bool | 0 | chain steps after the first accept a promoted entry with the warp's bit (SK_SC, OQ-35) |
+| `snake_intra_distance` | uint | 1 | intra-warp prefetch distance in iterations (SK_SC 8, OQ-34) |
+| `snake_intra_distance_mode` | uint | 0 | 0 = every iteration 1..D, 1 = only iteration D (OQ-34) |
 | `snake_interwarp_degree` | uint | 4 | OQ-8 |
 | `snake_interwarp_chain_depth` | uint | 0 | promoted inter-thread steps from each inter-warp target; 0 = paper Fig. 15 (OQ-29; S3b–S3d default 3, S3e default 0) |
 | `snake_promoted_all_warps` | bool | 1 | the first inter-thread step uses a promoted stride also for warps without their warpID bit, verified at their next load; deeper steps need the bit and a trained entry (S3e); 0 = S3c (OQ-32) |
@@ -267,6 +271,7 @@ The ablations come from these flags:
 - **Per mode:** {inter_thread, inter_warp, intra_warp} × {generated, issued, useful, late, unused}.
 - **Throttle (S4):** `throttle_space_events`, `throttle_bw_events`, `throttled_cycles` (`_space`, `_bw`), `bw_windows`, `bw_util_hist_<0..100>`, `pf_held_throttled` (replaces `pf_drop_throttled`), `loads_throttled`, `throttle_chain_cut`, `no_free_space`. The optional time series was not added.
 - **Decoupling (S4):** mode 1: `region_flips` (`_sector_miss`), `flip_unused_sectors`, `pf_fill_l1_region`, `pf_line_allocs`, `bulk_frees`, `bulk_free_l1_side` / `_pf_side`, `bulk_free_lines`, `bulk_free_pf_unused`, `l1_quota_victims`, `l1_cap_cycles_untrained` / `_confine`, `quota_checks`, `decouple_fallback`; mode 2: `iso_inserts`, `iso_hits`, `iso_evictions`, `iso_dup`, `iso_transfer_fail`.
+- **SnakeCharmer metrics (SK_SC, SPEC OQ-36):** `sc_pf_fills` (every prefetch fill), `sc_ld_ontime`, `sc_ld_late`, `sc_ld_early` (first load to a sector evicted unused, same kernel), `sc_ld_miss` (loads that sent a request), `sc_victim_sectors`, `sc_victim_demand`, `sc_victim_demand_by_pf`. Report: `util/snake/sk_sc_report.py`.
 - **No double counting:** each issued prefetch sector ends in exactly one terminal state.
   - At fill, if a demand had merged into its MSHR entry → `late` (bit not set). Otherwise the bit is set, and the bit later resolves to exactly one of `useful_timely` / `evicted_unused` / `unused_at_end`.
   - Invariant `issued == useful_timely + late + evicted_unused + unused_at_end`. It is checked at every stats print and reported as `snake_pf_invariant = OK|FAIL`; `unused_at_end` = invalidated + resident unused + in flight unmerged (`snake_pf_unused_at_end_total`).
@@ -462,6 +467,12 @@ The ablations come from these flags:
   - **Findings** (results/S6_ipc.md): perfect memory gains < 5% on hotspot, mri-q and lud. backprop and histo are DRAM-queue bound; srad_v1 and mri-q are limited by the miss queue and MSHRs. Inter-warp lead is ~20 cycles; scope 2 makes backprop timely (accuracy 14%) without IPC (DRAM-bound).
   - **Outcome:** no Snake change raises IPC on these workloads; the defaults stay paper-faithful.
   - **Deviation:** an investigation stage with code (an opt-in option) and 22 runs beyond the S5 plan, on the user's request.
+- **SK_SC: SnakeCharmer's Snake baseline** (2026-10-26, on request; SPEC OQ-33…OQ-36, results/SK_SC.md).
+  - **Code:** gpgpu-sim `9622012e` adds `-snake_intra_distance`, `-snake_intra_distance_mode`, `-snake_chain_deep_promoted` (all off by default), raises the chain-depth limit to 10, and adds the `sc_*` stats (the L1D passes victim valid sectors and the access status). accel-sim `5d55de3` (`SK_SC`, `SK_SC_CTA`; `run_apps.sh` takes rodinia_2.0-ft), `dc1a98c` (`sk_sc_report.py`).
+  - **Gates:** off-regression PASS on 6; synthetic PASS (11, identical to S6 apart from the new lines); default Snake identical to S4b (5 runs).
+  - **Runs** (`sim_run_snake_skc`, 100M): 7 apps × {Snake, SK_SC} on PAPER_V100 (baseline cached) and × {baseline, Snake, SK_SC} on base QV100; 6 SnakeCharmer workloads × {baseline, Snake, SK_SC} × both; SK_SC_CTA on hotspot ×2 and srad_v1 × both (SK_SC dropped hotspot by > 2%). 87 runs + 17 gate runs.
+  - **Findings:** against SnakeCharmer's SK, coverage is of the same order, accuracy ~3× and timeliness mostly late. SK_SC's IPC is below our Snake's (GMEAN without particlefilter_naive −2.6% / −1.0% vs +0.9% / +0.3%). Inter-warp targets in other CTAs cost hotspot up to −11% on PAPER_V100. No A100 traces exist locally.
+  - **Defaults unchanged.**
   - *Done when:* the sweep run dirs generate and the plots/tables are reproducible.
 
 ## 9. Verification
@@ -486,7 +497,7 @@ The ablations come from these flags:
    - Every gap >10 pp is explained against the VERSION_DIFF list and the OQs.
 
 ## 10. Experiment layout
-- **Run dirs (new only; verified that none exist today):** `sim_run_baseline`, `sim_run_snake`, `sim_run_snake_dt`, `sim_run_snake_t`, `sim_run_ssnake`, `sim_run_snake_sweep_{tail,evict,throttle}`, `sim_run_snake_sens` (S5 Tier 2), `sim_run_snake_regress`, `sim_run_snake_synth`, `sim_run_snake_train`, `sim_run_snake_refcmp`, `sim_run_snake_gate`, `sim_run_snake_refcache`, `sim_run_baseline_1132`, `sim_run_snake_1132`, `sim_run_snake_calib` (S3e latency calibration).
+- **Run dirs (new only; verified that none exist today):** `sim_run_baseline`, `sim_run_snake`, `sim_run_snake_dt`, `sim_run_snake_t`, `sim_run_ssnake`, `sim_run_snake_sweep_{tail,evict,throttle}`, `sim_run_snake_sens` (S5 Tier 2), `sim_run_snake_regress`, `sim_run_snake_synth`, `sim_run_snake_train`, `sim_run_snake_refcmp`, `sim_run_snake_gate`, `sim_run_snake_refcache`, `sim_run_baseline_1132`, `sim_run_snake_1132`, `sim_run_snake_calib` (S3e latency calibration), `sim_run_snake_skc` (SK_SC).
 - **Never** touch existing `sim_run_*`, `hw_run/` or traces. The traces are read-only `-T` inputs.
 
 ```bash
@@ -551,5 +562,6 @@ All of OQ-1…OQ-18 from SPEC §7 carry over, plus:
 - **OQ-17 Lane check.** **Decided 2026-10-13:** by default `snake_lane_mode 1`, a deviation from §3.4: the per-PC lane pattern in S2b, replaced in S2c by the stateless run filter. The paper-literal rule stays as mode 0. See SPEC OQ-17.
 - **OQ-9 Footprint.** **Revised 2026-10-13 (S2c):** `snake_footprint` 0 = one 128 B line (default), 1 = exact lane descriptor per Tail entry. See SPEC OQ-9.
 - **OQ-32 (S3d):** promoted inter-thread strides serve all warps; see SPEC §7.
+- **OQ-33…OQ-36 (SK_SC):** SnakeCharmer's SK settings (inter-warp targets, intra-warp distance, confidence 3) and metrics; see SPEC §7.
 - **OQ-29…OQ-31 (S3b):** combined lookahead for inter-warp targets, the inter-warp eviction weight, and inter-thread priority in the prefetch queue; see SPEC §7.
 - **OQ-28 Demotion (S2).** A demoted entry (more than `demote_removed` warps removed, §3.2) also clears its warpID vector, so it is re-trained from scratch instead of being re-promoted by the remaining bits. (low)

@@ -187,4 +187,29 @@ Gates:
 - **Differs:** Accel-Sim version; AccelWattch off; 6 of 9 comparison points not built; 4 ISPASS apps missing; our own Snake deviations (OQ-12/17/30/32).
 - **SPEC.md fixes:** register unit; L1I 128 B line; DRAM units; MRQ abbreviation.
 
+**SK_SC: Snake as SnakeCharmer's baseline (done 2026-10-26).** Details: `results/SK_SC.md`; SPEC OQ-33…OQ-36. SnakeCharmer (Tang et al., MICRO 2026, arXiv 2610.30990) uses Snake as its baseline "SK" and sets what the Snake paper leaves open (§III-A).
+- **Config `SK_SC`:**
+  - 128-entry queue
+  - chain depth 10, with promoted deeper steps
+  - intra-warp distance 8 (every iteration 1..8)
+  - inter-warp: up to 63 resident warps by global warp id
+  - confidence 3
+  - `SK_SC_CTA` keeps the inter-warp targets in the CTA.
+  - Defaults unchanged.
+- **Code:** gpgpu-sim `9622012e` (3 options off by default, chain-depth limit 10, `sc_*` stats for SnakeCharmer's metrics); accel-sim `5d55de3` (tokens, rodinia_2.0-ft in `run_apps.sh`), `dc1a98c` (`sk_sc_report.py`).
+- **Gates:** off-regression PASS (6); synthetic PASS (11, identical to S6 apart from the new lines); default Snake identical to S4b (5).
+- **Runs:** 87 at 100M on PAPER_V100 and on base QV100 (LRR, 1132 MHz, SnakeCharmer's V100):
+  - our 7 apps
+  - the 6 SnakeCharmer workloads with local traces: b+tree, bfs, particlefilter float/naive, heartwall and streamcluster (the last two with other inputs)
+  - SK_SC_CTA on hotspot and srad_v1
+- **No A100 (sm_80) traces exist locally.** The oracle A100 runs use the sm_70 `hw_run` traces; the GhOST tarball is sm_75. mst, sssp, gemm, AlexNet and ResNet have no traces. bfs's traces are 24–25% mis-decoded after the parser fix.
+- **Build-tag audit** of runs since 2026-10-22: none mixed accel-sim `scap` with gpgpu-sim `Snake`. The only ones are `sim_run_oracle_coalesced`'s (both repos on `oracle-coalesced-miss`).
+- **Ours vs SnakeCharmer's SK** (A100: coverage 11.5%, accuracy 23.1%, on time / too early / too late 48.3 / 28.7 / 23.0%). SK_SC, base QV100, its 6 workloads:
+  - coverage 16.4% (27.2% with late uses)
+  - accuracy 66.2%
+  - timeliness 38.8 / 4.7 / 56.5%
+- **IPC vs no prefetching** (SnakeCharmer reports none for SK). GMEAN over 15 workloads, SK_SC +1.4% / +3.0% vs Snake +4.3% / +3.7% (PAPER_V100 / QV100). Without particlefilter_naive (+79% / +65%, latency-bound at 5.9% occupancy): −2.6% / −1.0% vs +0.9% / +0.3%.
+- **hotspot:** SK_SC −11.0% / −6.3% on PAPER_V100, because inter-warp targets in other CTAs are wrong on its 2-D grid. SK_SC_CTA restores it (+0.15% / −0.02%). On base QV100 there is no drop (+0.4% / +1.1%). In S6, scope 1 at degree 4 gave +0.10% and scope 2 gave −4.7%.
+- **Timeliness on our 7 apps** rises on average (on time 21.5 → 28.3% PAPER_V100, 8.2 → 10.8% QV100), mostly from backprop, without IPC (7-app GMEAN −2.95% vs −0.08%).
+
 **Next:** your go-ahead on Phase 1. Tier 2 (117 jobs) also still awaits approval.

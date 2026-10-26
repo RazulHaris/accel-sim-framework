@@ -309,9 +309,34 @@ Format: interpretation (confidence).
   - `0` is the S3c behaviour: only warps holding their bit, plus OQ-27, got inter-thread predictions. S3c measured 15–57% of loads at a promoted PC1 without the bit (results/S3c_diag.md §3).
   - Results: results/S3d.md.
   - (decided)
+- **OQ-33 SK_SC: Snake as SnakeCharmer's baseline (decided 2026-10-26).** SnakeCharmer (Tang et al., MICRO 2026, arXiv 2610.30990v1; read on arXiv, the PDF is not on disk) evaluates on top of "the baseline Snake prefetcher" (SK, §IV) and sets parameters this paper leaves open (§III-A):
+  - "We empirically configure all candidate prefetch requests to share a single 128-entry prefetch queue."
+  - "We set the maximum prefetch distances for inter-PC, intra-warp, and inter-warp patterns to 10, 8, and 63, respectively." (Their "inter-PC" is our inter-thread, footnote 1.)
+  - "a prefetch is generated once the corresponding training confidence reaches 3" (T1, T2, T3).
+  - Table I lists no Snake parameters. Their zero-value counters (Z1–Z3) belong to Snake+, not SK.
+  - **Config token `SK_SC`**, on top of `SNAKE-SNAKE_FP1`: `-snake_queue_size 128`, `-snake_max_chain_depth 10` (the depth limit and histogram now go to 10), `-snake_intra_distance 8` (OQ-34), `-snake_interwarp_scope 1 -snake_interwarp_degree 63`, `-snake_chain_deep_promoted 1` (OQ-35), thresholds 3. Everything else stays at our defaults: decoupling mode 1 variant 1, throttling (chain cut to 1 while throttled, OQ-7), lane mode 1, eviction weight 3, OQ-32. No default changes.
+  - **Inter-warp targets.** Fig. 8 prefetches 2600, 2700 and 2800 "for lagging warps 2, 3, and 4"; the text gives no rule beyond the maximum 63. Read as: the resident, not exited warps of the kernel with a larger global warp id, nearest first, at most 63, each at a + (gwid₂ − gwid)·S_iw (scope 1 of S6). "Lagging" = a larger global warp id, the order in which warps reach a load under round-robin issue; Snake keeps no other per-warp progress. Warp-slot distance across CTAs would extrapolate into unrelated CTAs.
+  - `SK_SC_CTA` (after `SK_SC`) keeps the targets in the warp's CTA (scope 0, up to 63).
+  - **Result** (results/SK_SC.md §6): on PAPER_V100 these targets cost hotspot −11.0% (1024) and −6.3% (512) IPC vs no prefetching: on a 2-D grid the addresses in other CTAs are wrong. `SK_SC_CTA` restores hotspot (+0.15% / −0.02%).
+  - (decided)
+- **OQ-34 Intra-warp distance (SK_SC, decided 2026-10-26).** SnakeCharmer gives only maximum distances; its one intra-warp example issues a single target ("2500+500=3000", §III-A).
+  - `-snake_intra_distance D` (default 1) and `-snake_intra_distance_mode`: 0 = every iteration 1..D ahead (a + k·S_intra, k = 1..D), 1 = only a + D·S_intra. With D = 1 both are the paper's §3.1 rule.
+  - **SK_SC uses mode 0 (all targets 1..8).** §III-A uses one phrase, "maximum prefetch distances", for all three patterns. For inter-PC it can only mean every step up to 10 (a chain issues each step), and for inter-warp every lagging warp up to 63 (Fig. 8 prefetches warps 2, 3 and 4 together). The same reading is applied to intra-warp. Mode 1 is kept as the alternative.
+  - Intra-warp barely fires on our apps (§8: 0–45 predictions per 100M run in S3e), so the choice moves our 7-app results little.
+  - (decided)
+- **OQ-35 Training confidence 3 and deeper chain steps (SK_SC, decided 2026-10-26).** Our thresholds are already 3: T1 is promoted at 3 warps (`-snake_promote_warps`), T2 is trained at 3 warps (`-snake_intra_confirm_warps`), and an inter-warp stride needs 3 warps (`-snake_interwarp_min_warps`, SnakeCharmer's T3). Fig. 8 reaches T3 = 3 at the third agreeing warp ("when warp 3 later accesses 1200, T3 is increased and Snake+ prefetches address 1300 for warp 4"), as ours does. SnakeCharmer gives no decrement or reset rule, so §3.2's demotion (OQ-28) stays.
+  - One difference: our chain steps after the first need a *trained* entry (a repetition, §3.2 Fig. 13 paragraph; S3e), a state SnakeCharmer's single threshold does not have. `-snake_chain_deep_promoted 1` lets them use a promoted entry with the warp's bit. On in SK_SC only; default 0.
+  - (decided)
+- **OQ-36 SnakeCharmer's metrics (decided 2026-10-26).** Counted per 32 B sector, demand loads (`GLOBAL_ACC_R`), stats `snake_sc_*`:
+  - **Coverage** = H / (H + M) (Fig. 12 caption). M = loads whose access status is MISS (a new request). The paper does not say whether late uses are hits, so both are reported over the same denominator: H = on-time (late counted in M), and H = on-time + late.
+  - **Accuracy** = (on-time uses + fills a load had merged into) / prefetch fills (`sc_pf_fills`, late ones included; `pf_filled` counts only the others, so merged fills = `sc_pf_fills − pf_filled`). A late prefetch still in flight at the end counts on neither side.
+  - **Timeliness** among used prefetches (§II-B): on time = first load hitting a prefetched sector; too late = first load merging into its in-flight MSHR entry; too early = first load to a sector a prefetch filled and that was evicted unused (replacement, bulk free, a sector refill, or the isolated buffer) earlier in the same kernel on that SM, unless a new prefetch for it was issued since. This matches SnakeCharmer's hardware feedback (L1 hit / MSHR hit / prefetch-eviction-buffer hit, §III-B), without a buffer size limit. Sectors lost at the kernel-end invalidation are not too early.
+  - **Prefetch-induced demand evictions** = victim sectors whose data a demand fill brought, evicted by a prefetch allocation (directly or through a bulk free it triggers) / every valid victim sector (replacement, bulk free, isolated-buffer transfer). Kernel-end invalidations are not evictions. A used prefetched sector stays prefetch-filled.
+  - Means are arithmetic over workloads (SnakeCharmer does not say how it averages). Results: results/SK_SC.md.
+  - (decided)
 - **OQ-18 Scheduler.** Paper uses GTO. The base QV100 config says `-gpgpu_scheduler lrr` (`configs/tested-cfgs/SM7_QV100/gpgpusim.config:134`, despite the "Greedy then oldest" comment at :133). Run both baseline and Snake with GTO via a `GTO` extra-param config. (high)
 
-OQ-19…OQ-28 (simulator-specific questions, the decisions on clock, Rodinia version and competitors, and the S2 training interpretations) are in [SNAKE_PLAN §12](SNAKE_PLAN.md). OQ-29…OQ-31 (S3b) are above.
+OQ-19…OQ-28 (simulator-specific questions, the decisions on clock, Rodinia version and competitors, and the S2 training interpretations) are in [SNAKE_PLAN §12](SNAKE_PLAN.md). OQ-29…OQ-31 (S3b) are above. OQ-33…OQ-36 (SK_SC, SnakeCharmer's settings and metrics) are above.
 
 ## 8. Design limitations observed in our traces
 ### Discrepancies with the paper (S3e, exact footprint, 100M; paper values from §5 above)
@@ -361,6 +386,21 @@ OQ-19…OQ-28 (simulator-specific questions, the decisions on clock, Rodinia ver
   - Our best kernels match its predicted coverage within about ±15 pp, and backprop's IPC gain (+1.4% vs +1%).
   - They do not match accuracy (≤ 27–32% vs 60–96%) or the other IPC gains. Best kernel vs paper: histo +12% vs +33%, srad_v1 +2.6% vs +29%, lud +1.0% vs +18%, hotspot +0.3% vs +13%.
   - For hotspot and lud even a perfect L1 on the best kernel stays below the paper (+0.33%, +8.5%), so kernel selection does not explain the gap.
+
+### SnakeCharmer's SK settings (SK_SC, 2026-10-26; results/SK_SC.md)
+- **Against SnakeCharmer's SK** (A100, 14 apps; coverage 11.5%, accuracy 23.1%, timeliness 48.3 / 28.7 / 23.0% on time / too early / too late), SK_SC on its V100 setup (base QV100) over its 6 locally available workloads gives:
+  - coverage 16.4% (on-time only) / 27.2% (with late uses)
+  - accuracy 66.2%
+  - timeliness 38.8 / 4.7 / 56.5%
+  - Coverage is of the same order, accuracy ~3× higher. Almost nothing is too early and most uses are too late, as in S3c/S6.
+- **IPC vs no prefetching.** SK_SC is below our Snake on both setups:
+  - GMEAN over 15 workloads: +1.4% / +3.0% vs +4.3% / +3.7% (PAPER_V100 / base QV100).
+  - Without particlefilter_naive: −2.6% / −1.0% vs +0.9% / +0.3%.
+  - particlefilter_naive (5.9% occupancy, latency-bound) gains +65% with Snake and +79% with SK_SC.
+- **Inter-warp targets in other CTAs** (scope 1, degree 63) are wrong on 2-D grids. hotspot loses −11.0% / −6.3% on PAPER_V100; `SK_SC_CTA` restores it.
+- **b+tree loses −17.8% / −12.6%** with SK_SC (inter-warp issue ×6.8, accuracy 4.4%); histo loses −6.4% / −8.7% (depth-10 chains, intra-warp distance 8, queue-full drops ×5).
+- **Timeliness on our 7 apps** improves on average (on time 21.5 → 28.3% on PAPER_V100), almost all from backprop (2 → 93%), which is DRAM-bound and gains no IPC.
+- **bfs's traces are 24–25% mis-decoded** after the parser fix (base+delta lines with a wrong token count, every input), so its results are not reliable.
 
 ### Observations per stage
 - **S4 (results/S4.md).**

@@ -18,7 +18,7 @@ QV100-SASS-100M_INSN (base QV100: LRR, 1132 MHz, SnakeCharmer's V100).
 Metrics (32 B sectors, demand loads):
   coverage_sc   H / (H + M); H = on-time (+ late) uses, M = loads that sent a
                 new request (+ late uses when they are not counted in H)
-  accuracy_sc   (on-time + late uses) / prefetch fills
+  accuracy_sc   (on-time uses + fills a load had merged into) / prefetch fills
   timeliness    on-time / too-early / too-late among used prefetches; too
                 early = first load to a sector evicted unused (same kernel)
   pf-induced    demand-filled victim sectors evicted by a prefetch allocation
@@ -72,10 +72,13 @@ def metrics(s):
     on, late, early = s["sc_ld_ontime"], s["sc_ld_late"], s["sc_ld_early"]
     miss, fills = s["sc_ld_miss"], s["sc_pf_fills"]
     used = on + late + early
+    # fills a demand had merged into (pf_filled counts only the others); a
+    # late prefetch still in flight at the end has not filled yet
+    late_fills = fills - s["pf_filled"]
     return {
         "cov_on": pct(on, on + late + miss),
         "cov_late": pct(on + late, on + late + miss),
-        "acc": pct(on + late, fills),
+        "acc": pct(on + late_fills, fills),
         "t_on": pct(on, used), "t_early": pct(early, used),
         "t_late": pct(late, used),
         "pfev": pct(s["sc_victim_demand_by_pf"], s["sc_victim_sectors"]),
@@ -152,6 +155,7 @@ def main():
                 m = metrics(s)
                 sp = pct(s["_ipc"], base["_ipc"]) - 100 if base else float("nan")
                 groups.setdefault((grp, vname), []).append((sp, m))
+                groups.setdefault(("all", vname), []).append((sp, m))
                 print("| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
                     name, vname, fs(sp), f1(m["cov_on"]), f1(m["cov_late"]),
                     f1(m["acc"]), f1(m["t_on"]), f1(m["t_early"]), f1(m["t_late"]),
