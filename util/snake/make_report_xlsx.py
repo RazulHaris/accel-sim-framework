@@ -14,6 +14,9 @@ Sources:
   - docs/snake/SPEC.md (paper values §5/§6, OQs §7, discrepancies §8),
     SNAKE_PLAN.md (§0 status table, §12 OQs), VERSION_DIFF.md (trace scan)
   - parsers shared with collect_results.py, per_kernel.py, missq_check.py
+  - the presentation sheets of make_slides_data.py (vs the Snake paper, vs
+    SnakeCharmer, per 100 prefetched sectors, best Snake; with their own
+    footnotes and provenance)
 Headline numbers are cross-checked against the tables in
 docs/snake/results/{final_tier1,D1_ceilings,K1_best_kernel,S6_ipc}.md and
 final_tier1.csv; every mismatch is listed in the Provenance sheet.
@@ -1123,6 +1126,13 @@ def main():
     write_sheet(wb, "Summary", *SUMMARY)
     wb.move_sheet("Summary", offset=-(len(wb.sheetnames) - 1))
     wb.move_sheet("Best_kernel", offset=-(wb.sheetnames.index("Best_kernel") - 1))
+
+    # ======================= Presentation sheets (make_slides_data.py; own footnotes and provenance)
+    import make_slides_data
+    sl = make_slides_data.collect()
+    make_slides_data.add_sheets(wb, sl, make_slides_data.REPORT_NAMES, make_slides_data.charts(sl))
+    CHECKS.append(("presentation sheets vs results docs (Slides_provenance)", len(make_slides_data.CHECKS),
+                   len(make_slides_data.MISMATCH), "util/snake/make_slides_data.py"))
 
     # ======================= 16. Provenance
     rows = []
