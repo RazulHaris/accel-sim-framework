@@ -397,6 +397,32 @@ SNAKE_PQARB1:
     extra_params: "-snake_pq_arb 1"
 SNAKE_PQMSHR1:
     extra_params: "-snake_pq_mshr 1"
+# OQ-39 (our extension; fix_today Phase 3): a prediction source (target load
+# PC, mode) whose window of 32 resolved prefetches has less than 60% used is
+# stopped for 1,000 cycles.  60% is above the used share of the sources that
+# flood histo's prescan and final kernels (2-54%) and below the useful ones
+# (73-100%), results/fix_today.md.
+SNAKE_ACCF:
+    extra_params: "-snake_entry_acc_filter 1
+    \n-snake_acc_filter_min 0.60"
+# OQ-40 (our extension; fix_today Phase 4): one inter-warp target, the D-th
+# resident warp ahead by global warp id, a target in another CTA based on
+# that CTA's first warp (CTA anchoring).
+SNAKE_IWD8:
+    extra_params: "-snake_interwarp_scope 1
+    \n-snake_interwarp_single 1
+    \n-snake_interwarp_degree 8
+    \n-snake_interwarp_cta_anchor 1"
+SNAKE_IWD16:
+    extra_params: "-snake_interwarp_scope 1
+    \n-snake_interwarp_single 1
+    \n-snake_interwarp_degree 16
+    \n-snake_interwarp_cta_anchor 1"
+SNAKE_IWD32:
+    extra_params: "-snake_interwarp_scope 1
+    \n-snake_interwarp_single 1
+    \n-snake_interwarp_degree 32
+    \n-snake_interwarp_cta_anchor 1"
 
 # S6 IPC investigation: the latency ceiling.  L1 misses still use the L1D and
 # its miss queue, but the memory system answers at once (no L2/DRAM latency);
