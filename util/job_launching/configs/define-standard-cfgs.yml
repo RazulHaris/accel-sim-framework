@@ -384,6 +384,19 @@ SNAKE_HEAD64:
 # Decoupling off; throttling stays on (SK match, Step 1)
 SNAKE_DM0:
     extra_params: "-snake_decouple_mode 0"
+# R2 (docs/snake/R2_SPEC.md, SPEC OQ-38): prefetches wait in a separate
+# 128-sector prefetch queue and share the L1D -> interconnect injection
+# point (one request per cycle) with the miss queue; demand first, line and
+# MSHR taken when the prefetch is sent.  SNAKE_PQARB1: round-robin;
+# SNAKE_PQMSHR1: line and MSHR taken at enqueue.
+SNAKE_R2:
+    extra_params: "-snake_pq_path 1
+    \n-snake_pq_arb 0
+    \n-snake_pq_mshr 0"
+SNAKE_PQARB1:
+    extra_params: "-snake_pq_arb 1"
+SNAKE_PQMSHR1:
+    extra_params: "-snake_pq_mshr 1"
 
 # S6 IPC investigation: the latency ceiling.  L1 misses still use the L1D and
 # its miss queue, but the memory system answers at once (no L2/DRAM latency);
