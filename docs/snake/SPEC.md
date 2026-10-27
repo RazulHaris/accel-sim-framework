@@ -334,9 +334,22 @@ Format: interpretation (confidence).
   - **Prefetch-induced demand evictions** = victim sectors whose data a demand fill brought, evicted by a prefetch allocation (directly or through a bulk free it triggers) / every valid victim sector (replacement, bulk free, isolated-buffer transfer). Kernel-end invalidations are not evictions. A used prefetched sector stays prefetch-filled.
   - Means are arithmetic over workloads (SnakeCharmer does not say how it averages). Results: results/SK_SC.md.
   - (decided)
+- **OQ-37 SK variants for the SnakeCharmer match: same-CTA inter-warp targets and the per-warp Head (decided 2026-10-27).**
+  - **Inter-warp targets.** Every SK variant keeps them in the warp's CTA, up to 63 (`SK_SC_CTA`: scope 0, degree 63), not OQ-33's resident warps by global warp id.
+    - Cross-CTA targets extrapolate the stride per warp-ID step into other CTAs. Their addresses are wrong on 2-D grids: hotspot −11.0% / −6.3% IPC on PAPER_V100, b+tree −12.6% on base QV100 with 4.3% accuracy (results/SK_SC.md §6, results/SK_match_qv100.md).
+    - SnakeCharmer's Fig. 8 shows only warps of one CTA ("lagging warps 2, 3, and 4").
+  - **Head.** SnakeCharmer's Head table has "64 entries" of 10 B (Table III), is indexed by warp ID, and learns inter-warp strides "when consecutive warps execute the same load PC" (§III-A).
+    - Token `SNAKE_HEAD64` = `-snake_head_two_warps 0`: inter-warp training reads the per-warp Head registers (nearest warp IDs whose last load was this PC) instead of the per-PC rows of two warps (OQ-1b). The rows go unused.
+    - It trains the same inter-warp PCs as the two-warp rows on 11 of 14 workloads and slightly fewer on 3; Fig. 15 still matches exactly (results/SK_match_qv100.md).
+  - (decided)
+- **OQ-38 R2, a separate prefetch-queue injection path (proposed 2026-10-27; not implemented, waits for Step 2 approval).** SnakeCharmer §III-A: "We empirically configure all candidate prefetch requests to share a single 128-entry prefetch queue". It does not say how queued prefetches reach memory. Our reading R2 (`-snake_pq_path 1`, default 0):
+  - Prefetches wait in that queue and go straight to the L1 → interconnect injection point, never through the L1 miss queue (which then carries demand only, with no reserve).
+  - At most one request per cycle per SM in total.
+  - Arbitration `snake_pq_arb` (demand first, round-robin); MSHR allocation `snake_pq_mshr` (at send, at enqueue).
+  - Full spec: [R2_SPEC.md](R2_SPEC.md).
 - **OQ-18 Scheduler.** Paper uses GTO. The base QV100 config says `-gpgpu_scheduler lrr` (`configs/tested-cfgs/SM7_QV100/gpgpusim.config:134`, despite the "Greedy then oldest" comment at :133). Run both baseline and Snake with GTO via a `GTO` extra-param config. (high)
 
-OQ-19…OQ-28 (simulator-specific questions, the decisions on clock, Rodinia version and competitors, and the S2 training interpretations) are in [SNAKE_PLAN §12](SNAKE_PLAN.md). OQ-29…OQ-31 (S3b) are above. OQ-33…OQ-36 (SK_SC, SnakeCharmer's settings and metrics) are above.
+OQ-19…OQ-28 (simulator-specific questions, the decisions on clock, Rodinia version and competitors, and the S2 training interpretations) are in [SNAKE_PLAN §12](SNAKE_PLAN.md). OQ-29…OQ-31 (S3b) are above. OQ-33…OQ-38 (SK_SC and the SK match: SnakeCharmer's settings, metrics, same-CTA targets, per-warp Head, R2) are above.
 
 ## 8. Design limitations observed in our traces
 ### Discrepancies with the paper (S3e, exact footprint, 100M; paper values from §5 above)
@@ -401,6 +414,14 @@ OQ-19…OQ-28 (simulator-specific questions, the decisions on clock, Rodinia ver
 - **b+tree loses −17.8% / −12.6%** with SK_SC (inter-warp issue ×6.8, accuracy 4.4%); histo loses −6.4% / −8.7% (depth-10 chains, intra-warp distance 8, queue-full drops ×5).
 - **Timeliness on our 7 apps** improves on average (on time 21.5 → 28.3% on PAPER_V100), almost all from backprop (2 → 93%), which is DRAM-bound and gains no IPC.
 - **bfs's traces are 24–25% mis-decoded** after the parser fix (base+delta lines with a wrong token count, every input), so its results are not reliable.
+
+### SK match on base QV100, Step 1 (2026-10-27; results/SK_match_qv100.md)
+- **Neither suspect explains the timing gap.** Neither a miss-queue reserve of 0 (SK_R0) nor reserve 0 with decoupling off (SK_R0_D0) moves the timing split or accuracy towards SnakeCharmer's SK.
+  - On SnakeCharmer's 5 workloads: 40.3–42.2 / 0.0 / 57.8–59.6% (on time / too early / too late), accuracy 72.6–73.6%. SnakeCharmer: 48.3 / 28.7 / 23.0%, 23.1%.
+- **Too early stays at 0 with decoupling off**, so the protected prefetch region is not the cause. Prefetches are late because same-CTA inter-warp targets reach the load ~20 cycles after the prediction (S6).
+- **Untested remaining suspect:** the prefetch footprint (sector-exact here; line-based prefetching would lower sector accuracy).
+- **SK_R0_D0 has the best IPC** (GMEAN over 14 +4.77% vs SK +3.97%). Decoupling mode 1's bulk frees cause most prefetch-induced demand evictions (16.4% → 10.7%; hotspot 27.9% → 1.9%).
+- **Reserve 0 raises demand MISS_QUEUE_FULL** (histo +20% over the baseline, heartwall +67%) and costs histo 2.5 points of IPC.
 
 ### Observations per stage
 - **S4 (results/S4.md).**

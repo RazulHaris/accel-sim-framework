@@ -212,4 +212,19 @@ Gates:
 - **hotspot:** SK_SC −11.0% / −6.3% on PAPER_V100, because inter-warp targets in other CTAs are wrong on its 2-D grid. SK_SC_CTA restores it (+0.15% / −0.02%). On base QV100 there is no drop (+0.4% / +1.1%). In S6, scope 1 at degree 4 gave +0.10% and scope 2 gave −4.7%.
 - **Timeliness on our 7 apps** rises on average (on time 21.5 → 28.3% PAPER_V100, 8.2 → 10.8% QV100), mostly from backprop, without IPC (7-app GMEAN −2.95% vs −0.08%).
 
-**Next:** your go-ahead on Phase 1. Tier 2 (117 jobs) also still awaits approval.
+**SK match on base QV100, Step 1 (done 2026-10-27).** Details: `results/SK_match_qv100.md`; SPEC OQ-37, OQ-38. Why do our timing split and accuracy differ from SnakeCharmer's SK? All runs are on base QV100 (SnakeCharmer's V100: LRR, 1132 MHz), 100M. Workloads: our 7 apps plus b+tree, particlefilter float/naive, heartwall and streamcluster (no bfs).
+- **Every SK variant:** SK_SC with same-CTA inter-warp targets (up to 63) and SnakeCharmer's 64-entry per-warp Head (`SNAKE_HEAD64` = `-snake_head_two_warps 0`).
+- **Configs:**
+  - SK (reserve 8, decoupling on)
+  - (a) SK_R0: miss-queue reserve 0
+  - (b) SK_R0_D0: reserve 0, decoupling off
+- **Code:** tokens only (accel-sim `2a5c57c`), on the SK_SC build `5d55de3` / `9622012e`. The R2 injection-path spec is saved in `R2_SPEC.md`, not implemented.
+- **Runs:** 42 plus 1 Fig. 15 check (PASS: the per-warp Head trains the figure's inter-warp stride).
+- **Verdict:** neither (a) nor (b) moves towards SnakeCharmer's 48.3 / 28.7 / 23.0% and 23.1% accuracy.
+  - On SnakeCharmer's 5 workloads SK gives 42.2 / 0.0 / 57.8% and 72.6%, (a) 40.3 / 0.0 / 59.6% and 73.6%, (b) 40.7 / 0.0 / 59.3% and 72.9%.
+  - Too early stays at 0 even with decoupling off: prefetches are late, not early.
+- **IPC:** (b) is best (GMEAN over 14: +4.77% vs SK +3.97%; histo −8.4 → −1.2%). (a) costs histo (−11.0%) and raises demand MISS_QUEUE_FULL.
+- **Same-CTA targets** fix b+tree (−12.6% → −2.6%). The per-warp Head trains the same inter-warp PCs as the two-warp rows on 11 of 14 workloads.
+- **Proposed Step 2 base:** SK_R0_D0.
+
+**Next:** your go-ahead on Phase 1. Tier 2 (117 jobs) also still awaits approval. SK match Steps 2–4 (R2, ceilings, bfs diagnosis) await approval.
