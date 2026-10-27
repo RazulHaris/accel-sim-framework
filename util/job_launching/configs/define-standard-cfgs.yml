@@ -259,6 +259,9 @@ SNAKE_MQR4:
     extra_params: "-snake_missq_reserve 4"
 SNAKE_MQR8:
     extra_params: "-snake_missq_reserve 8"
+# No reserved slots (SK match, Step 1)
+SNAKE_MQR0:
+    extra_params: "-snake_missq_reserve 0"
 
 # Paper-literal inter-warp prefetching (OQ-29): no promoted inter-thread chain
 # from the inter-warp targets, as in the paper's Fig. 15 (c).  The default
@@ -372,6 +375,15 @@ SK_SC:
 # after SK_SC (the later value wins).
 SK_SC_CTA:
     extra_params: "-snake_interwarp_scope 0"
+# SnakeCharmer's Head table (Table III: 64 entries of 10 B, indexed by warp
+# ID; §III-A: inter-warp strides from consecutive warps at the same load PC):
+# inter-warp training reads the per-warp Head registers (nearest warp IDs
+# whose last load was this PC) instead of the per-PC rows of two warps.
+SNAKE_HEAD64:
+    extra_params: "-snake_head_two_warps 0"
+# Decoupling off; throttling stays on (SK match, Step 1)
+SNAKE_DM0:
+    extra_params: "-snake_decouple_mode 0"
 
 # S6 IPC investigation: the latency ceiling.  L1 misses still use the L1D and
 # its miss queue, but the memory system answers at once (no L2/DRAM latency);
