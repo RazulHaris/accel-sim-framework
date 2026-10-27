@@ -239,4 +239,9 @@ Gates:
 - **Same-CTA targets** fix b+tree (−12.6% → −2.6%). The per-warp Head trains the same inter-warp PCs as the two-warp rows on 11 of 14 workloads.
 - **Proposed Step 2 base:** SK_R0_D0.
 
+**SK_R0_D0 at Tier 1 conditions (2026-10-27, 9 runs, PAPER_V100, 1B).** Details: `results/SK_match_qv100.md` (section after Step 1); script: `util/snake/kernel_gap.py`.
+- **Whole run (primary):** SK_R0_D0 −0.52% vs Tier 1 Snake −0.29% (7-app GMEAN). histo −3.44% vs −1.93%. So the best Snake on base QV100 at 100M is not the best at Tier 1 conditions.
+- **Best kernel (diagnostic only):** +5.72% vs +2.05%, almost all histo's intermediates kernel (+42%), while histo's whole run loses 3.4%.
+- **Why the best kernels were lower on base QV100 at 100M:** the window (100M holds only histo's first intermediates launch) and the setup (LRR, 1132 MHz), not the config.
+
 **Next:** your go-ahead on Phase 1. Tier 2 (117 jobs) also still awaits approval. SK match Steps 2–4 (R2, ceilings, bfs diagnosis) await approval.

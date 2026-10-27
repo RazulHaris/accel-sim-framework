@@ -6,7 +6,7 @@ Why do our SK_SC numbers differ from SnakeCharmer's SK (results/SK_SC.md)? Ours:
 - SnakeCharmer's apps without bfs: b+tree, particlefilter float and naive, heartwall†, streamcluster† († = input differs from SnakeCharmer Table II)
 - our 7 apps (9 workloads)
 
-Steps 2–4 (R2 injection path, ceilings, bfs) wait for approval; the R2 spec is in [R2_SPEC.md](../R2_SPEC.md).
+Steps 2–4 (R2 injection path, ceilings, bfs) wait for approval; the R2 spec is in [R2_SPEC.md](../R2_SPEC.md). SK_R0_D0 against Tier 1's Snake at Tier 1 conditions (PAPER_V100, 1B), with the window / setup / config decomposition: the section after Step 1.
 
 ## Step 1: miss-queue reserve and decoupling (done)
 
@@ -231,6 +231,130 @@ APPS=rodinia-3.1:backprop-rodinia-3.1,rodinia-3.1:hotspot-rodinia-3.1,rodinia-3.
 python3 util/snake/sk_match_report.py $PWD/sim_run_snake_skm/qv100/runs $PWD/sim_run_snake_skc
 ```
 Fig. 15 check: `check_synthetic.py sim_run_snake_synth/SKM_HEAD64/runs sim_run_snake_synth/SKM_HEAD64/traces QV100-SASS-SYNTH_LRR1-SNAKE_DT-SNAKE_DBG-SNAKE_HEAD64 snake-synth-fig15` (log `/home/razul/snake/synthetic_SKM_HEAD64.log`).
+
+## Best Snake (SK_R0_D0) vs Tier 1's Snake: window, setup and config (2026-10-27)
+SK_R0_D0's best kernels on base QV100 at 100M gained less than Tier 1 Snake's (K1_best_kernel.md: PAPER_V100, 1B). Is that the Snake config, the GPU setup or the 100M window? SK_R0_D0 was run at Tier 1 conditions to separate the three.
+
+**Best-kernel results are diagnostic only.** A kernel's gain does not predict the run's: under SK_R0_D0 histo's best kernel gains +42% while the whole run loses 3.4%. The whole-run gain is the result.
+
+### Runs and method
+- **Runs:**
+  - 9 (our 7 apps), `QV100-SASS-PAPER_V100-1B_INSN-SNAKE-SNAKE_FP1-SK_SC-SK_SC_CTA-SNAKE_HEAD64-SNAKE_MQR0-SNAKE_DM0`, in `sim_run_snake_skm/v100p_1b`.
+  - Build: the frozen SK build `5d55de3` / `9622012e` (`sim_run_snake_skc/qv100_7apps/bin`, both `_modified_0.0`), as in Step 1.
+  - All 9 finished (22 min, 9 in parallel). `collect_results.py`: 0 failed checks (build tags, outcome and funnel invariants, no warp woken by a prefetch).
+- **Baseline:** Tier 1's no-prefetch runs (`sim_run_baseline`, build `2c3a333` / `3f635b67`).
+  - The SK build with Snake off equals `bin_ref_v2` (off-regression).
+  - Within the first 100M, every complete launch (cycles, instructions) of Tier 1's baseline and Snake runs equals that of the SK build's 100M runs, on 9 of 9 workloads.
+- **Steps.** Every run except SK_R0_D0 at 1B already existed:
+  - Tier 1 Snake (exact footprint), PAPER_V100, 1B.
+  - The same runs, restricted to the launches that start within the first 100M instructions (the "window").
+  - Snake, PAPER_V100, 100M (`sim_run_snake_skc/v100p_7apps`; baseline `sim_run_snake_refcache/bin_ref_v2`).
+  - Snake, base QV100, 100M (`sim_run_snake_skc/qv100_7apps`).
+  - SK_R0_D0 at 1B, its window, and SK_R0_D0 on base QV100 at 100M (Step 1).
+- **Per kernel, as in K1** (`per_kernel.py`):
+  - Launches pair in order, and a kernel is all launches of a function.
+  - The best kernel has the largest gain among kernels with at least 1% of the baseline cycles.
+  - At 1B the launch cut by the cap is excluded, as in K1.
+  - At 100M that launch is kept and marked `*`: it is the only launch of backprop and hotspot 1024, and it holds mri-q's and srad_v1's main kernels.
+- **GMEAN** is over the 7 apps, an app's inputs combined first, as in final_tier1.md and K1. Step 1's tables average over workloads instead: SK_R0_D0's 7-app GMEAN is −0.00% there and −0.20% here.
+
+### Whole run (primary)
+| workload | Tier 1 Snake | SK_R0_D0 | difference |
+|---|---|---|---|
+| backprop | -0.20% | +0.16% | +0.36 pp |
+| hotspot 1024 | +0.16% | +0.14% | -0.03 pp |
+| hotspot 512 | +0.13% | -0.09% | -0.22 pp |
+| lud 512 | +0.12% | -0.11% | -0.23 pp |
+| lud 256 | +0.08% | +0.09% | +0.01 pp |
+| nw | +0.00% | +0.00% | +0.00 pp |
+| histo | -1.93% | -3.44% | -1.51 pp |
+| mri-q | +0.09% | +0.21% | +0.12 pp |
+| srad_v1 | -0.21% | -0.53% | -0.32 pp |
+| **GMEAN** (7 apps) | -0.29% | -0.52% | -0.23 pp |
+| GMEAN (9 workloads) | -0.20% | -0.40% | -0.21 pp |
+
+- **At Tier 1 conditions SK_R0_D0 is below Tier 1's Snake:** −0.52% vs −0.29%.
+  - histo decides it: −3.44% vs −1.93%. srad_v1 also drops (−0.53% vs −0.21%).
+  - backprop is the only clear gain (+0.16% vs −0.20%).
+- **The best Snake on base QV100 at 100M is not the best at Tier 1 conditions.** The SK config adds +0.42 pp on base QV100 at 100M but −0.23 pp on PAPER_V100 at 1B.
+- **particlefilter_naive** is not a Tier 1 workload, so the split with and without it does not apply to this comparison. On SK_R0_D0's 14 workloads (base QV100, 100M), the reference is:
+
+| GMEAN over workloads | n | whole run | best kernel (diagnostic) |
+|---|---|---|---|
+| all | 14 | +4.77% | +9.26% |
+| without particlefilter_naive | 13 | +0.57% | +5.21% |
+| our 7 apps | 9 | -0.00% | +1.35% |
+| SnakeCharmer apps | 5 | +13.96% | +25.09% |
+
+### Best kernel (diagnostic only)
+| workload | Tier 1 Snake: best kernel (share of cycles) | gain | SK_R0_D0: best kernel (share) | gain |
+|---|---|---|---|---|
+| backprop | `bpnn_layerforward_CUDA` (46.3%) | +0.07% | `bpnn_adjust_weights_cuda` (53.7%) | +0.29% |
+| hotspot 1024 | `calculate_temp` (100.0%) | +0.16% | `calculate_temp` (100.0%) | +0.14% |
+| hotspot 512 | `calculate_temp` (100.0%) | +0.13% | `calculate_temp` (100.0%) | -0.09% |
+| lud 512 | `lud_internal` (21.3%) | +0.59% | `lud_perimeter` (27.1%) | +0.05% |
+| lud 256 | `lud_internal` (18.4%) | +0.43% | `lud_internal` (18.4%) | +0.51% |
+| nw | `needle_cuda_shared_1` (50.1%) | +0.00% | `needle_cuda_shared_1` (50.1%) | +0.00% |
+| histo | `histo_intermediates_kernel` (17.1%) | +11.48% | `histo_intermediates_kernel` (17.1%) | +42.17% |
+| mri-q | `ComputeQ_GPU` (97.6%) | +0.10% | `ComputeQ_GPU` (97.6%) | +0.22% |
+| srad_v1 | `extract` (1.3%) | +2.56% | `extract` (1.3%) | +3.00% |
+| **GMEAN** (7 apps) | | +2.05% | | +5.72% |
+
+- **histo** decides the GMEAN, and its best kernel is the clearest case where a kernel's gain misleads.
+  - `histo_intermediates_kernel` gains +42.17%: +8.1% in its first launch, +43.5–47.4% in the eight after it. With Tier 1 Snake it gains +7.1% and then +9.7–13.9%.
+  - The other kernels pay for it: `histo_prescan_kernel` −46.5% (Snake −10.8%), `histo_final_kernel` −23.8% (Snake −2.8%), `histo_main_kernel` +0.07% (Snake −3.88%, 66% of the cycles). The whole run ends at −3.44%.
+- **lud 512's** best kernel changes from `lud_internal` (Snake +0.59%, SK_R0_D0 −0.57%) to `lud_perimeter` (+0.05%).
+- **backprop's** changes to `bpnn_adjust_weights_cuda` (+0.29%; Snake −0.43%).
+
+### Window, setup and config
+| step | whole run | best kernel (diagnostic) |
+|---|---|---|
+| Tier 1 Snake: PAPER_V100, 1B | -0.29% | +2.05% |
+| Tier 1 Snake, launches started in the first 100M | -0.16% | +1.48% |
+| Snake: PAPER_V100, 100M | -0.14% | +1.47% |
+| Snake: base QV100, 100M | -0.62% | +0.72% |
+| SK_R0_D0: PAPER_V100, 1B | -0.52% | +5.72% |
+| SK_R0_D0 1B, launches started in the first 100M | -0.46% | +1.61% |
+| SK_R0_D0: base QV100, 100M | -0.20% | +1.51% |
+
+Effects, in points (whole run / best kernel):
+- window, Tier 1 Snake (T1 -> T1 win): +0.13 / -0.57
+- window vs 100M runs (T1 win -> P100; complete launches identical): +0.01 / -0.01
+- setup, Snake (P100 -> Q100): -0.48 / -0.75
+- config at base QV100, 100M (Q100 -> SK Q100): +0.42 / +0.79
+- config at Tier 1 conditions (T1 -> SK 1B): -0.23 / +3.67
+- window, SK_R0_D0 (SK 1B -> SK 1B win): +0.06 / -4.11
+- setup, SK_R0_D0 (SK 1B win -> SK Q100): +0.26 / -0.11
+
+- **Why SK_R0_D0's best kernels on base QV100 at 100M (+1.51%) were below Tier 1 Snake's (+2.05%):** the window and the setup, not the config.
+  - **Snake:** the window costs −0.57 pp, because 100M holds only histo's first `histo_intermediates_kernel` launch. The setup costs −0.75 pp. The config adds +0.79 pp on base QV100.
+  - **SK_R0_D0:** the config adds +3.67 pp at Tier 1 conditions. Then the window removes −4.11 pp, because the eight later histo launches carry the gain. The setup costs only −0.11 pp.
+- **For the whole run the picture is different.** The window effects are small (+0.13 / +0.06 pp) and base QV100 costs Snake −0.48 pp. The config helps on base QV100 (+0.42 pp) and hurts at Tier 1 conditions (−0.23 pp).
+
+### Per kernel, step by step (diagnostic only)
+`*` = includes the launch cut by the 100M cap. Launches = at 1B / within the first 100M.
+
+| workload | kernel (best in) | launches | T1 | T1 win | P100 | Q100 | SK 1B | SK 1B win | SK Q100 |
+|---|---|---|---|---|---|---|---|---|---|
+| backprop | `bpnn_layerforward_CUDA` (T1, SK Q100) | 1/1 | +0.07 | +0.07 | -0.10* | -0.25* | +0.01 | +0.01 | -0.32* |
+| backprop | `bpnn_adjust_weights_cuda` (SK 1B) | 1/0 | -0.43 | n/a | n/a | n/a | +0.29 | n/a | n/a |
+| hotspot 1024 | `calculate_temp` (T1, SK 1B, SK Q100) | 1/1 | +0.16 | +0.16 | +0.13* | +0.06* | +0.14 | +0.14 | +0.30* |
+| hotspot 512 | `calculate_temp` (T1, SK 1B, SK Q100) | 1/1 | +0.13 | +0.13 | +0.13 | +0.79 | -0.09 | -0.09 | +2.64 |
+| lud 512 | `lud_internal` (T1) | 31/7 | +0.59 | +1.00 | +0.99* | +0.08* | -0.57 | -2.33 | -1.07* |
+| lud 512 | `lud_perimeter` (SK 1B, SK Q100) | 31/7 | -0.00 | -0.03 | -0.03 | +0.01 | +0.05 | +0.20 | +0.18 |
+| lud 256 | `lud_internal` (T1, SK 1B, SK Q100) | 15/15 | +0.43 | +0.43 | +0.43 | +0.19 | +0.51 | +0.51 | +0.12 |
+| nw | `needle_cuda_shared_1` (T1, SK 1B, SK Q100) | 128/128 | +0.00 | +0.00 | +0.00 | +0.00 | +0.00 | +0.00 | +0.00 |
+| histo | `histo_intermediates_kernel` (T1, SK 1B, SK Q100) | 9/1 | +11.48 | +7.07 | +7.07 | +4.34 | +42.17 | +8.06 | +6.38 |
+| mri-q | `ComputeQ_GPU` (T1, SK 1B, SK Q100) | 2/1 | +0.10 | -0.12 | +0.14* | +0.28* | +0.22 | +0.10 | +0.40* |
+| srad_v1 | `extract` (T1, SK 1B, SK Q100) | 1/1 | +2.56 | +2.56 | +2.56 | +0.18 | +3.00 | +3.00 | +2.63 |
+
+### Reproduce
+```bash
+C=QV100-SASS-PAPER_V100-1B_INSN-SNAKE-SNAKE_FP1-SK_SC-SK_SC_CTA-SNAKE_HEAD64-SNAKE_MQR0-SNAKE_DM0
+util/snake/run_apps.sh sim_run_snake_skm/v100p_1b sim_run_snake_skc/qv100_7apps/bin "$C" 9
+python3 util/snake/kernel_gap.py
+```
+Logs: `/home/razul/snake/skm_v100p_1b.log` and `/home/razul/snake/kernel_gap.md`.
 
 ## Step 2: R2 injection path (waiting for approval)
 Spec: [R2_SPEC.md](../R2_SPEC.md), SPEC OQ-38. Proposed base: SK_R0_D0.

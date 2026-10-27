@@ -480,6 +480,9 @@ The ablations come from these flags:
   - **Configs:** SK = SK_SC + same-CTA targets + per-warp Head; SK_R0 = reserve 0; SK_R0_D0 = reserve 0, decoupling off.
   - **Runs:** 14 workloads (our 7 apps; b+tree, particlefilter ×2, heartwall, streamcluster) × 3 configs, base QV100, 100M = 42 (`sim_run_snake_skm/qv100`), plus 1 Fig. 15 run (PASS). Baselines, Snake and the old SK_SC from `sim_run_snake_skc`.
   - **Findings:** neither suspect explains the gap. Too early stays at 0 with decoupling off, and prefetches stay late (78–80%). SK_R0_D0 has the best IPC (+4.77% over 14) and is the proposed base for Step 2 (R2).
+  - **SK_R0_D0 at Tier 1 conditions** (on request): 9 runs, PAPER_V100, 1B (`sim_run_snake_skm/v100p_1b`, SK build, Tier 1's baselines).
+    - Whole run −0.52% vs Tier 1 Snake −0.29% (7-app GMEAN).
+    - The window / setup / config decomposition (best kernel diagnostic only) is in results/SK_match_qv100.md (`util/snake/kernel_gap.py`).
   - **Steps 2–4** (R2, ceilings, bfs diagnosis) wait for approval.
   - *Done when:* the sweep run dirs generate and the plots/tables are reproducible.
 
