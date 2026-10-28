@@ -47,6 +47,9 @@ CONFIGS = [
     ("E", FIX + "/p3", SK + "-SNAKE_ACCF", "SK_R0_D0 + accuracy filter (OQ-39, 60%)"),
     ("F", FIX + "/p3b", SK + "-SNAKE_R2-SNAKE_ACCF", "B + accuracy filter (60%)"),
     ("E10", FIX + "/p3b", SK + "-SNAKE_ACCF-SNAKE_ACCFB10K", "E with a 10,000-cycle stop"),
+    ("G8", FIX + "/p4", SK + "-SNAKE_ACCF-SNAKE_ACCFB10K-SNAKE_IWD8", "E10 + one inter-warp target 8 ahead, CTA anchoring"),
+    ("G16", FIX + "/p4", SK + "-SNAKE_ACCF-SNAKE_ACCFB10K-SNAKE_IWD16", "E10 + one inter-warp target 16 ahead, CTA anchoring"),
+    ("G32", FIX + "/p4", SK + "-SNAKE_ACCF-SNAKE_ACCFB10K-SNAKE_IWD32", "E10 + one inter-warp target 32 ahead, CTA anchoring"),
 ]
 BASE = ("sim_run_baseline", P1)
 CEIL = ("sim_run_snake_gate/D1_pl1d", P1 + "-PERFECT_L1D")

@@ -342,14 +342,30 @@ Format: interpretation (confidence).
     - Token `SNAKE_HEAD64` = `-snake_head_two_warps 0`: inter-warp training reads the per-warp Head registers (nearest warp IDs whose last load was this PC) instead of the per-PC rows of two warps (OQ-1b). The rows go unused.
     - It trains the same inter-warp PCs as the two-warp rows on 11 of 14 workloads and slightly fewer on 3; Fig. 15 still matches exactly (results/SK_match_qv100.md).
   - (decided)
-- **OQ-38 R2, a separate prefetch-queue injection path (proposed 2026-10-27; not implemented, waits for Step 2 approval).** SnakeCharmer §III-A: "We empirically configure all candidate prefetch requests to share a single 128-entry prefetch queue". It does not say how queued prefetches reach memory. Our reading R2 (`-snake_pq_path 1`, default 0):
+- **OQ-38 R2, a separate prefetch-queue injection path (proposed 2026-10-27; implemented 2026-10-27, gpgpu-sim `bb20e7aa`; results in results/fix_today.md).** SnakeCharmer §III-A: "We empirically configure all candidate prefetch requests to share a single 128-entry prefetch queue". It does not say how queued prefetches reach memory. Our reading R2 (`-snake_pq_path 1`, default 0):
   - Prefetches wait in that queue and go straight to the L1 → interconnect injection point, never through the L1 miss queue (which then carries demand only, with no reserve).
   - At most one request per cycle per SM in total.
   - Arbitration `snake_pq_arb` (demand first, round-robin); MSHR allocation `snake_pq_mshr` (at send, at enqueue).
   - Full spec: [R2_SPEC.md](R2_SPEC.md).
+  - With `pq_mshr 0`, a sector counts as issued only when it is sent, after tags and MSHR are checked again. The queue holds `-snake_pq_size` (128) sectors. A sector already waiting in it is a duplicate.
+  - (decided)
+- **OQ-39 Accuracy filter (our extension, 2026-10-27; `-snake_entry_acc_filter 1`, default 0).** The Snake paper demotes Tail entries whose stride stops matching; it does not stop entries whose prefetches go unused.
+  - **Rule:** per prediction source, i.e. (target load PC, mode), issued prefetches are counted in windows of `-snake_acc_filter_window` (32), each when its outcome is known.
+    - **Used:** first use, timely or late.
+    - **Unused:** evicted unused, or resident unused `-snake_acc_filter_age` (1,000) cycles after its fill.
+  - **Stop:** a window with less than `-snake_acc_filter_min` used stops the source for `-snake_acc_filter_block` cycles, and its queued lines are dropped. Defaults: 0.25 and 1,000.
+  - **Granularity:** "per Tail entry" is read as per target load PC and mode, because Tail entries are reallocated and inter-warp strides are kept per PC.
+  - **Why outcomes, not issue time:** counting uses as they arrive, in windows of issued prefetches, stopped good sources whose uses lag a burst of issue.
+  - **Threshold used:** 60% (`SNAKE_ACCF`). That is above the used share of the sources flooding histo's prescan and final kernels (2–54%) and below the useful sources in all 9 workloads (73–100%).
+  - Results: results/fix_today.md. (decided)
+- **OQ-40 Single inter-warp target and CTA anchoring (our extension, 2026-10-27; default off).**
+  - **`-snake_interwarp_single 1`:** predicts only the `interwarp_degree`-th resident warp ahead, by global warp id among the SM's resident warps (scope ≥ 1), or in the CTA (scope 0). "Exactly D global warp ids ahead" is rarely resident on the same SM, because consecutive CTAs go to different SMs.
+  - **`-snake_interwarp_cta_anchor 1`:** a target in another CTA takes the address that CTA's first warp last loaded at this PC, plus its warp index times the stride. It is skipped until that warp has executed the PC.
+  - **Token:** `SNAKE_IWD<D>` = scope 1 + single + degree D + anchoring.
+  - Results: results/fix_today.md. (decided)
 - **OQ-18 Scheduler.** Paper uses GTO. The base QV100 config says `-gpgpu_scheduler lrr` (`configs/tested-cfgs/SM7_QV100/gpgpusim.config:134`, despite the "Greedy then oldest" comment at :133). Run both baseline and Snake with GTO via a `GTO` extra-param config. (high)
 
-OQ-19…OQ-28 (simulator-specific questions, the decisions on clock, Rodinia version and competitors, and the S2 training interpretations) are in [SNAKE_PLAN §12](SNAKE_PLAN.md). OQ-29…OQ-31 (S3b) are above. OQ-33…OQ-38 (SK_SC and the SK match: SnakeCharmer's settings, metrics, same-CTA targets, per-warp Head, R2) are above.
+OQ-19…OQ-28 (simulator-specific questions, the decisions on clock, Rodinia version and competitors, and the S2 training interpretations) are in [SNAKE_PLAN §12](SNAKE_PLAN.md). OQ-29…OQ-31 (S3b) are above. OQ-33…OQ-38 (SK_SC and the SK match: SnakeCharmer's settings, metrics, same-CTA targets, per-warp Head, R2) and OQ-39, OQ-40 (fix_today: accuracy filter, single inter-warp target and CTA anchoring) are above.
 
 ## 8. Design limitations observed in our traces
 ### Discrepancies with the paper (S3e, exact footprint, 100M; paper values from §5 above)

@@ -248,3 +248,54 @@ Columns: IPC gain / prefetches issued per demand sector / unused share of issued
   - `histo_final_kernel`: 91 / 84 / 66 / 57% (distances 1 to 8–15).
 - **None of A–E meets (a) or (b):** histo stays below −1% in every config.
 
+## Phase 3, second part (F, E10: 18 runs, `sim_run_snake_fix/p3b`)
+- **Configs:**
+  - F: B + filter (SK_R0_D0 + R2 + filter at 60%), as requested.
+  - E10: E with a 10,000-cycle stop (`SNAKE_ACCFB10K`, about one `histo_prescan_kernel` launch). A parameter-only variant of OQ-39 aimed at the flood E left.
+- **Build:** `4b51495` / `19e3d746`. All 18 runs finished with 0 failed checks.
+
+### Whole run, all configs so far
+| workload | Tier 1 Snake | SK_R0_D0 | A | B | C | D | E | F | E10 | perfect-L1 ceiling |
+|---|---|---|---|---|---|---|---|---|---|---|
+| backprop | -0.20% | +0.16% | +0.03% | +0.24% | -0.19% | -0.20% | -0.05% | +0.15% | -0.10% | +41.7% |
+| hotspot 1024 | +0.16% | +0.14% | +0.11% | +0.08% | +0.14% | +0.19% | +0.20% | +0.11% | +0.30% | +0.1% |
+| hotspot 512 | +0.13% | -0.09% | -0.10% | +0.17% | +0.05% | +0.20% | +0.07% | +0.24% | +0.07% | +0.3% |
+| lud 512 | +0.12% | -0.11% | -0.07% | -0.65% | -0.55% | +0.14% | -0.15% | -0.43% | -0.13% | +3.6% |
+| lud 256 | +0.08% | +0.09% | +0.09% | +0.10% | +0.09% | +0.08% | +0.09% | +0.10% | +0.09% | +3.0% |
+| nw | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +16.6% |
+| histo | -1.93% | -3.44% | -4.96% | -3.25% | -3.13% | -1.77% | -1.88% | -1.80% | -1.64% | +39.2% |
+| mri-q | +0.09% | +0.21% | +0.24% | -0.06% | +0.15% | +0.09% | +0.21% | -0.06% | +0.21% | +2.2% |
+| srad_v1 | -0.21% | -0.53% | -1.57% | -0.10% | -0.60% | -1.35% | -0.56% | -0.14% | -0.46% | +20.6% |
+| **GMEAN** (7 apps) | **-0.29%** | **-0.52%** | **-0.91%** | **-0.48%** | **-0.56%** | **-0.42%** | **-0.31%** | **-0.26%** | **-0.26%** | +16.6% |
+
+### Success criteria
+| config | (a) histo ≥ 0 | (b) lowest workload (≥ −1%) | (c) GMEAN > Tier 1 Snake | (d) timely share of used: pooled / mean over workloads | all four |
+|---|---|---|---|---|---|
+| Tier 1 Snake | -1.93% no | -1.93% (histo) no | -0.29% - | 39.1% / 21.4% - | no |
+| SK_R0_D0 | -3.44% no | -3.44% (histo) no | -0.52% no | 38.5% / 24.5% no | no |
+| A | -4.96% no | -4.96% (histo) no | -0.91% no | 34.5% / 22.2% no | no |
+| B | -3.25% no | -3.25% (histo) no | -0.48% no | 40.2% / 26.1% yes | no |
+| C | -3.13% no | -3.13% (histo) no | -0.56% no | 38.1% / 24.2% no | no |
+| D | -1.77% no | -1.77% (histo) no | -0.42% no | 38.3% / 19.7% no | no |
+| E | -1.88% no | -1.88% (histo) no | -0.31% no | 36.6% / 23.9% no | no |
+| F | -1.80% no | -1.80% (histo) no | -0.26% yes | 39.2% / 25.4% yes | no |
+| E10 | -1.64% no | -1.64% (histo) no | -0.26% yes | 34.8% / 22.8% no | no |
+
+### histo per kernel, F and E10 (columns as above)
+| histo kernel (share) | config | IPC gain | issued / demand | unused % | DRAM × | pq wait | wins d:p |
+|---|---|---|---|---|---|---|---|
+| `histo_main_kernel` (66.1%) | F | +0.05% | 0.07 | 6 | 0.97 | 39.3 | 109524:0 |
+| `histo_main_kernel` (66.1%) | E10 | +0.33% | 0.05 | 5 | 1.03 | - | - |
+| `histo_intermediates_kernel` (17.1%) | F | +32.11% | 0.62 | 0 | 0.71 | 70.4 | 694090:0 |
+| `histo_intermediates_kernel` (17.1%) | E10 | +28.26% | 0.59 | 0 | 0.72 | - | - |
+| `histo_final_kernel` (10.2%) | F | -17.42% | 0.94 | 41 | 1.43 | 90.3 | 709501:0 |
+| `histo_final_kernel` (10.2%) | E10 | -15.51% | 0.65 | 25 | 1.21 | - | - |
+| `histo_prescan_kernel` (6.5%) | F | -38.00% | 1.57 | 78 | 3.95 | 39.7 | 18735:0 |
+| `histo_prescan_kernel` (6.5%) | E10 | -37.47% | 1.51 | 77 | 3.81 | - | - |
+
+### Reading
+- **GMEAN:** F (−0.264%) and E10 (−0.262%) are the first configs above Tier 1 Snake (−0.288%), meeting criterion (c). F also meets (d) (timely share 39.2% vs 39.1%).
+- **histo** stays below −1% (F −1.80%, E10 −1.64%), so (a) and (b) fail for every config.
+- **The longer stop does not cure `histo_prescan_kernel`** (E10: −37.5%, 77% unused, 3.8× DRAM reads). The filter stops sources often there, but other sources keep issuing. `histo_final_kernel` improves (−15.5% vs −17.6%).
+- **Phase 4 condition holds:** the pooled late share is still about 61%. Phase 4 runs on E10 (best GMEAN so far, and best histo).
+
