@@ -114,3 +114,137 @@ Implemented as specified in `docs/snake/R2_SPEC.md`: gpgpu-sim `bb20e7aa`, token
 - **Distance counters:** `snake_iw_dist_*`.
 - **Build:** a first incremental build left stale objects after the header change (smoke runs aborted, one used 19.8 GB). A clean full build fixed it, and the gates ran on that build.
 
+## Phase 2: R2 at Tier 1 conditions (27 runs) and Phase 3, first part (D, E: 18 runs)
+- **Runs:**
+  - `sim_run_snake_fix/p2`: A, B and C, build `c09021a` / `bb20e7aa`.
+  - `sim_run_snake_fix/p3`: D and E, build `4b51495` / `19e3d746`.
+  - All runs finished with 0 failed checks (outcome and funnel invariants, no warp woken by a prefetch, both build tags `_modified_0.0`).
+  - Baseline: Tier 1's no-prefetch runs.
+- **The session break.** A session break killed 6 Phase 2 jobs (histo and nw under A, B and C) and the P34 off-regression. The partial outputs are kept as `sim.out.killed`, and the jobs were rerun on the same pinned build (`RESUME=1`).
+- **Phase 3/4 build gates:**
+  - Off-regression P34b: PASS on 6 workloads.
+  - Synthetic P34: PASS, 12 runs, with Fig. 15 also run with `SNAKE_ACCF`.
+- **Configs:**
+  - A: Tier 1 Snake + R2 (arbitration 0, MSHR at send)
+  - B: SK_R0_D0 + R2 (same settings)
+  - C: B with round-robin arbitration
+  - D: Tier 1 Snake + filter (60%)
+  - E: SK_R0_D0 + filter (60%)
+- **Script:** `util/snake/fix_report.py`.
+
+### Whole run (primary)
+| workload | Tier 1 Snake | SK_R0_D0 | A | B | C | D | E | perfect-L1 ceiling |
+|---|---|---|---|---|---|---|---|---|
+| backprop | -0.20% | +0.16% | +0.03% | +0.24% | -0.19% | -0.20% | -0.05% | +41.7% |
+| hotspot 1024 | +0.16% | +0.14% | +0.11% | +0.08% | +0.14% | +0.19% | +0.20% | +0.1% |
+| hotspot 512 | +0.13% | -0.09% | -0.10% | +0.17% | +0.05% | +0.20% | +0.07% | +0.3% |
+| lud 512 | +0.12% | -0.11% | -0.07% | -0.65% | -0.55% | +0.14% | -0.15% | +3.6% |
+| lud 256 | +0.08% | +0.09% | +0.09% | +0.10% | +0.09% | +0.08% | +0.09% | +3.0% |
+| nw | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +16.6% |
+| histo | -1.93% | -3.44% | -4.96% | -3.25% | -3.13% | -1.77% | -1.88% | +39.2% |
+| mri-q | +0.09% | +0.21% | +0.24% | -0.06% | +0.15% | +0.09% | +0.21% | +2.2% |
+| srad_v1 | -0.21% | -0.53% | -1.57% | -0.10% | -0.60% | -1.35% | -0.56% | +20.6% |
+| **GMEAN** (7 apps) | **-0.29%** | **-0.52%** | **-0.91%** | **-0.48%** | **-0.56%** | **-0.42%** | **-0.31%** | +16.6% |
+
+### Success criteria
+| config | (a) histo ≥ 0 | (b) lowest workload (≥ −1%) | (c) GMEAN > Tier 1 Snake | (d) timely share of used: pooled / mean over workloads | all four |
+|---|---|---|---|---|---|
+| Tier 1 Snake | -1.93% no | -1.93% (histo) no | -0.29% - | 39.1% / 21.4% - | no |
+| SK_R0_D0 | -3.44% no | -3.44% (histo) no | -0.52% no | 38.5% / 24.5% no | no |
+| A | -4.96% no | -4.96% (histo) no | -0.91% no | 34.5% / 22.2% no | no |
+| B | -3.25% no | -3.25% (histo) no | -0.48% no | 40.2% / 26.1% yes | no |
+| C | -3.13% no | -3.13% (histo) no | -0.56% no | 38.1% / 24.2% no | no |
+| D | -1.77% no | -1.77% (histo) no | -0.42% no | 38.3% / 19.7% no | no |
+| E | -1.88% no | -1.88% (histo) no | -0.31% no | 36.6% / 23.9% no | no |
+
+The timely share is pooled over the 9 workloads (`pf_useful_timely / (timely + late)`; Tier 1's build has no `snake_sc_*`). The mean over workloads is also given.
+
+### Per kernel: histo
+Columns: IPC gain / prefetches issued per demand sector / unused share of issued / DRAM reads vs no prefetching / R2 prefetch-queue wait / arbitration wins demand:prefetch.
+
+| histo kernel (share) | config | IPC gain | issued / demand | unused % | DRAM × | pq wait | wins d:p |
+|---|---|---|---|---|---|---|---|
+| `histo_main_kernel` (66.1%) | Tier 1 Snake | -3.88% | 0.20 | 1 | 1.08 | - | - |
+| `histo_main_kernel` (66.1%) | SK_R0_D0 | +0.07% | 0.06 | 8 | 0.93 | - | - |
+| `histo_main_kernel` (66.1%) | A | -8.43% | 0.24 | 0 | 1.08 | 31.7 | 223228:0 |
+| `histo_main_kernel` (66.1%) | B | -0.28% | 0.07 | 9 | 0.92 | 36.5 | 112355:0 |
+| `histo_main_kernel` (66.1%) | C | -0.16% | 0.07 | 9 | 0.92 | 36.0 | 97407:87235 |
+| `histo_main_kernel` (66.1%) | D | -3.31% | 0.19 | 1 | 1.07 | - | - |
+| `histo_main_kernel` (66.1%) | E | +0.39% | 0.06 | 5 | 1.02 | - | - |
+| `histo_intermediates_kernel` (17.1%) | Tier 1 Snake | +11.48% | 0.52 | 0 | 0.91 | - | - |
+| `histo_intermediates_kernel` (17.1%) | SK_R0_D0 | +42.17% | 0.57 | 0 | 0.73 | - | - |
+| `histo_intermediates_kernel` (17.1%) | A | +11.97% | 0.64 | 0 | 0.92 | 68.1 | 638404:0 |
+| `histo_intermediates_kernel` (17.1%) | B | +43.32% | 0.62 | 1 | 0.73 | 71.5 | 714583:0 |
+| `histo_intermediates_kernel` (17.1%) | C | +42.23% | 0.66 | 1 | 0.73 | 52.5 | 448533:414322 |
+| `histo_intermediates_kernel` (17.1%) | D | +11.21% | 0.52 | 0 | 0.92 | - | - |
+| `histo_intermediates_kernel` (17.1%) | E | +31.85% | 0.59 | -0 | 0.72 | - | - |
+| `histo_final_kernel` (10.2%) | Tier 1 Snake | -2.82% | 0.66 | 18 | 1.17 | - | - |
+| `histo_final_kernel` (10.2%) | SK_R0_D0 | -23.79% | 0.90 | 37 | 1.50 | - | - |
+| `histo_final_kernel` (10.2%) | A | -2.97% | 0.82 | 24 | 1.27 | 50.0 | 705846:0 |
+| `histo_final_kernel` (10.2%) | B | -20.44% | 1.04 | 44 | 1.55 | 81.2 | 700571:0 |
+| `histo_final_kernel` (10.2%) | C | -20.14% | 1.07 | 42 | 1.54 | 61.7 | 362932:331037 |
+| `histo_final_kernel` (10.2%) | D | -4.74% | 0.64 | 15 | 1.14 | - | - |
+| `histo_final_kernel` (10.2%) | E | -17.59% | 0.74 | 30 | 1.30 | - | - |
+| `histo_prescan_kernel` (6.5%) | Tier 1 Snake | -10.83% | 0.71 | 50 | 1.88 | - | - |
+| `histo_prescan_kernel` (6.5%) | SK_R0_D0 | -46.50% | 1.68 | 79 | 4.08 | - | - |
+| `histo_prescan_kernel` (6.5%) | A | -9.88% | 0.72 | 50 | 1.87 | 9.9 | 14935:0 |
+| `histo_prescan_kernel` (6.5%) | B | -47.42% | 1.86 | 84 | 4.45 | 42.0 | 26072:0 |
+| `histo_prescan_kernel` (6.5%) | C | -47.04% | 1.86 | 84 | 4.46 | 41.0 | 24270:17171 |
+| `histo_prescan_kernel` (6.5%) | D | -10.86% | 0.71 | 50 | 1.87 | - | - |
+| `histo_prescan_kernel` (6.5%) | E | -39.48% | 1.52 | 77 | 3.83 | - | - |
+
+### Per kernel: srad_v1
+| srad_v1 kernel (share) | config | IPC gain | issued / demand | unused % | DRAM × | pq wait | wins d:p |
+|---|---|---|---|---|---|---|---|
+| `reduce` (46.2%) | Tier 1 Snake | +0.19% | 0.32 | 0 | 7.20 | - | - |
+| `reduce` (46.2%) | SK_R0_D0 | +0.44% | 0.34 | 1 | 15.20 | - | - |
+| `reduce` (46.2%) | A | +0.17% | 0.31 | 0 | 15.00 | 15.1 | 379496:0 |
+| `reduce` (46.2%) | B | +0.23% | 0.29 | 2 | 37.70 | 48.6 | 389356:0 |
+| `reduce` (46.2%) | C | +0.15% | 0.31 | 2 | 42.10 | 49.8 | 65673:41770 |
+| `reduce` (46.2%) | D | +0.20% | 0.32 | 0 | 7.10 | - | - |
+| `reduce` (46.2%) | E | +0.25% | 0.34 | 1 | 15.60 | - | - |
+| `srad` (23.1%) | Tier 1 Snake | -1.20% | 0.19 | 3 | 1.03 | - | - |
+| `srad` (23.1%) | SK_R0_D0 | -2.12% | 0.21 | 3 | 1.17 | - | - |
+| `srad` (23.1%) | A | -6.68% | 0.19 | 3 | 1.03 | 14.4 | 272244:0 |
+| `srad` (23.1%) | B | +0.14% | 0.21 | 3 | 0.93 | 28.4 | 243268:0 |
+| `srad` (23.1%) | C | -2.10% | 0.21 | 3 | 0.98 | 20.3 | 115644:105228 |
+| `srad` (23.1%) | D | -5.74% | 0.18 | 3 | 1.05 | - | - |
+| `srad` (23.1%) | E | -2.14% | 0.21 | 2 | 1.01 | - | - |
+| `srad2` (17.3%) | Tier 1 Snake | -0.60% | 0.02 | 6 | 2.14 | - | - |
+| `srad2` (17.3%) | SK_R0_D0 | -1.65% | 0.02 | 18 | 3.71 | - | - |
+| `srad2` (17.3%) | A | -0.57% | 0.02 | 7 | 2.19 | 46.5 | 313785:0 |
+| `srad2` (17.3%) | B | -1.59% | 0.02 | 27 | 5.95 | 82.8 | 338508:0 |
+| `srad2` (17.3%) | C | -2.07% | 0.03 | 21 | 3.45 | 38.2 | 57047:47402 |
+| `srad2` (17.3%) | D | -0.75% | 0.02 | 6 | 1.95 | - | - |
+| `srad2` (17.3%) | E | -1.38% | 0.02 | 18 | 3.67 | - | - |
+| `prepare` (12.1%) | Tier 1 Snake | +0.60% | 0.15 | 0 | - | - | - |
+| `prepare` (12.1%) | SK_R0_D0 | +0.17% | 0.20 | 0 | - | - | - |
+| `prepare` (12.1%) | A | +0.52% | 0.08 | 0 | - | 14.2 | 543462:0 |
+| `prepare` (12.1%) | B | +0.20% | 0.08 | 1 | - | 14.4 | 546303:0 |
+| `prepare` (12.1%) | C | +1.46% | 0.12 | 1 | - | 25.3 | 118938:23255 |
+| `prepare` (12.1%) | D | +0.44% | 0.15 | 0 | - | - | - |
+| `prepare` (12.1%) | E | +0.36% | 0.20 | 0 | - | - | - |
+| `extract` (1.3%) | Tier 1 Snake | +2.56% | 0.51 | 0 | 1.00 | - | - |
+| `extract` (1.3%) | SK_R0_D0 | +3.00% | 0.65 | 0 | 1.00 | - | - |
+| `extract` (1.3%) | A | +2.21% | 0.28 | 0 | 1.00 | 20.0 | 22389:0 |
+| `extract` (1.3%) | B | +2.32% | 0.28 | 1 | 1.00 | 33.5 | 22344:0 |
+| `extract` (1.3%) | C | +1.78% | 0.46 | 0 | 1.00 | 31.0 | 6772:5193 |
+| `extract` (1.3%) | D | +2.56% | 0.51 | 0 | 1.00 | - | - |
+| `extract` (1.3%) | E | +3.00% | 0.65 | 0 | 1.00 | - | - |
+
+### Reading
+- **R2 does not fix histo** (Phase 0 predicted this).
+  - B and C leave `histo_prescan_kernel` (−47%) and `histo_final_kernel` (−20%) as they were, and histo's whole run stays at −3.1 to −3.3%.
+  - On Tier 1 Snake (A), demand-first injection makes `histo_main_kernel` lose more (−8.4% vs −3.9%), and srad's `srad` kernel too (−6.7% vs −1.2%). A has the worst GMEAN (−0.91%).
+  - On SK_R0_D0, R2 helps `srad` (−2.1% → +0.1%), and B raises the pooled timely share above Tier 1 Snake's (40.2% vs 39.1%, criterion (d)). Its GMEAN (−0.48%) stays below Tier 1 Snake's.
+- **The 60% filter helps histo, but its 1,000-cycle stop is too short.**
+  - E: histo −1.88% (SK_R0_D0 −3.44%), GMEAN −0.31% (best so far; Tier 1 Snake −0.29%). D: histo −1.77%.
+  - In `histo_prescan_kernel` the filter stops sources 16.5 times per launch per SM, each for 1,000 cycles, in a 9,700-cycle launch. Between stops the flood resumes until the next window closes (up to 1,000 cycles of aging). Prescan keeps 77% of its prefetches unused (SK_R0_D0: 79%).
+  - E also costs `histo_intermediates_kernel` 10 points (+42.2% → +31.9%).
+  - D cannot reach histo ≥ 0. Tier 1 Snake's `histo_main_kernel` loss (−3.3% with the filter, 66% of the cycles) comes with only 1% unused prefetches, so a usefulness filter cannot remove it.
+- **Inter-warp target distance (E, new counters):** the used share falls with distance.
+  - Whole histo run: 94% (distance 1), 89% (2–3), 78% (4–7), 69% (8–15), 42% (16–31).
+  - `histo_prescan_kernel`: 96 / 70 / 57 / 61 / 0%.
+  - `histo_final_kernel`: 91 / 84 / 66 / 57% (distances 1 to 8–15).
+- **None of A–E meets (a) or (b):** histo stays below −1% in every config.
+

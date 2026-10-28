@@ -173,7 +173,7 @@ def main():
         bk = per_kernel(path(BASE[0], BASE[1], w))
         tot = sum(v["_cyc"] for v in bk.values())
         ks = [k for k in sorted(bk, key=lambda k: -bk[k]["_cyc"]) if bk[k]["_cyc"] >= 0.01 * tot]
-        print("| %s kernel (share) | config | IPC gain | issued / demand | unused % | DRAM × | pq wait | wins d:p |"
+        print("| %s kernel (share) | config | IPC gain | issued / demand | unused %% | DRAM × | pq wait | wins d:p |"
               % short(*w))
         print("|---|---|---|---|---|---|---|---|")
         cache = {}
