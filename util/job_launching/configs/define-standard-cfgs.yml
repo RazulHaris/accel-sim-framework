@@ -405,6 +405,10 @@ SNAKE_PQMSHR1:
 SNAKE_ACCF:
     extra_params: "-snake_entry_acc_filter 1
     \n-snake_acc_filter_min 0.60"
+# OQ-39 with a 10,000-cycle stop (about one histo prescan launch); use after
+# SNAKE_ACCF
+SNAKE_ACCFB10K:
+    extra_params: "-snake_acc_filter_block 10000"
 # OQ-40 (our extension; fix_today Phase 4): one inter-warp target, the D-th
 # resident warp ahead by global warp id, a target in another CTA based on
 # that CTA's first warp (CTA anchoring).

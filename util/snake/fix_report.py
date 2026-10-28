@@ -45,6 +45,8 @@ CONFIGS = [
     ("C", FIX + "/p2", SK + "-SNAKE_R2-SNAKE_PQARB1", "SK_R0_D0 + R2 (arb 1, mshr 0)"),
     ("D", FIX + "/p3", S + "-SNAKE_ACCF", "Tier 1 Snake + accuracy filter (OQ-39, 60%)"),
     ("E", FIX + "/p3", SK + "-SNAKE_ACCF", "SK_R0_D0 + accuracy filter (OQ-39, 60%)"),
+    ("F", FIX + "/p3b", SK + "-SNAKE_R2-SNAKE_ACCF", "B + accuracy filter (60%)"),
+    ("E10", FIX + "/p3b", SK + "-SNAKE_ACCF-SNAKE_ACCFB10K", "E with a 10,000-cycle stop"),
 ]
 BASE = ("sim_run_baseline", P1)
 CEIL = ("sim_run_snake_gate/D1_pl1d", P1 + "-PERFECT_L1D")
