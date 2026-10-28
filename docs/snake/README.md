@@ -244,4 +244,17 @@ Gates:
 - **Best kernel (diagnostic only):** +5.72% vs +2.05%, almost all histo's intermediates kernel (+42%), while histo's whole run loses 3.4%.
 - **Why the best kernels were lower on base QV100 at 100M:** the window (100M holds only histo's first intermediates launch) and the setup (LRR, 1132 MHz), not the config.
 
-**Next:** your go-ahead on Phase 1. Tier 2 (117 jobs) also still awaits approval. SK match Steps 2–4 (R2, ceilings, bfs diagnosis) await approval.
+**fix_today: fixing Snake at Tier 1 conditions (2026-10-27/28).** Details: `results/fix_today.md`; SPEC OQ-38…OQ-40. All runs are PAPER_V100, 1B, our 9 workloads, against Tier 1's no-prefetch runs.
+- **Criteria:**
+  - (a) histo ≥ 0
+  - (b) no workload below −1%
+  - (c) 7-app GMEAN above Tier 1 Snake (−0.29%)
+  - (d) higher timely share
+- **Phase 0 (no runs):** SK_R0_D0 loses histo's prescan and final kernels to a flood of unused prefetches (inter-thread chains, intra-warp; prescan 79% unused, DRAM reads ×4.1). The miss queue is not the bottleneck.
+- **R2** (separate prefetch-queue injection path, OQ-38; A–C) does not help: GMEAN −0.48 to −0.91%.
+- **Accuracy filter** (OQ-39, 60%; D, E, F, E10) halves histo's loss with SK settings: E10 histo −1.64%, GMEAN −0.26%.
+- **One inter-warp target 8 ahead with CTA anchoring** (OQ-40) on E10 (**G8**) has the best GMEAN, **−0.24%**, and meets (c) and (d).
+- **No config meets (a) and (b):** histo stays at −1.6 to −5.0%.
+- **Tables:** `util/snake/fix_report.py`; per-kernel diagnosis: `util/snake/kernel_diag.py`. Best-kernel view (diagnostic) in the results file.
+
+**Next:** your go-ahead on Phase 1. Tier 2 (117 jobs) also still awaits approval. SK match Steps 3–4 (ceilings, bfs diagnosis) await approval. For histo, the untested next candidates are in `results/fix_today.md` ("What did not work").

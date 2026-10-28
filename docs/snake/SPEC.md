@@ -439,6 +439,13 @@ OQ-19…OQ-28 (simulator-specific questions, the decisions on clock, Rodinia ver
 - **SK_R0_D0 has the best IPC** (GMEAN over 14 +4.77% vs SK +3.97%). Decoupling mode 1's bulk frees cause most prefetch-induced demand evictions (16.4% → 10.7%; hotspot 27.9% → 1.9%).
 - **Reserve 0 raises demand MISS_QUEUE_FULL** (histo +20% over the baseline, heartwall +67%) and costs histo 2.5 points of IPC.
 
+### fix_today: Snake at Tier 1 conditions (2026-10-28; results/fix_today.md)
+- **Cause of histo's loss under SK_R0_D0:** a flood of unused prefetches in `histo_prescan_kernel` (1.68 issued per demand sector, 79% unused, DRAM reads ×4.1) and `histo_final_kernel` (37% unused, 30% of demand evictions caused by prefetches). The miss queue is not the bottleneck (demand wait 8–9 cycles).
+- **R2 (OQ-38) does not fix it.** It changes the injection order, not the volume. GMEAN: A −0.91%, B −0.48%, C −0.56%, vs Tier 1 Snake −0.29%.
+- **The accuracy filter (OQ-39) halves histo's loss with SK settings** (−3.44% → −1.64% with a 10,000-cycle stop, E10). It does not stop prescan's flood (77% unused).
+- **One inter-warp target 8 resident warps ahead with CTA anchoring (OQ-40), on top of E10 (G8)**, has the best GMEAN, −0.24%. It meets (c) GMEAN above Tier 1 Snake and (d) higher timely share, not (a) histo ≥ 0 or (b) no workload below −1%. 16 or 32 ahead is worse.
+- **Tier 1 Snake's `histo_main_kernel` loses 3–4% with only 1% unused prefetches,** so no usefulness filter can recover it. Every Tier 1-based config keeps histo ≤ −1.77%.
+
 ### Observations per stage
 - **S4 (results/S4.md).**
   - Mode 1 costs hotspot a fifth of its demand L1 hits (32.3 → 25.6–26.0%). Its hits are timely prefetches. Bulk frees evict 19.5k prefetched sectors before use (Snake-DT: 1.3k), close to the 19.0k unused sectors that lost protection when their line flipped on its first demand hit (OQ-12, one flag per line). The 128 KB L1D held hotspot's prefetches without decoupling (S3c).

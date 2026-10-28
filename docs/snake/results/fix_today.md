@@ -299,3 +299,138 @@ Columns: IPC gain / prefetches issued per demand sector / unused share of issued
 - **The longer stop does not cure `histo_prescan_kernel`** (E10: −37.5%, 77% unused, 3.8× DRAM reads). The filter stops sources often there, but other sources keep issuing. `histo_final_kernel` improves (−15.5% vs −17.6%).
 - **Phase 4 condition holds:** the pooled late share is still about 61%. Phase 4 runs on E10 (best GMEAN so far, and best histo).
 
+## Phase 4: one inter-warp target further ahead, with CTA anchoring (27 runs, `sim_run_snake_fix/p4`)
+- **Why it ran:** the late share was still about 61% after Phase 3, above the 50% condition.
+- **Configs:** on top of E10 (best GMEAN and best histo after Phase 3), `SNAKE_IWD<D>` for D = 8, 16, 32 (OQ-40).
+  - Scope 1 (targets in any resident CTA).
+  - Only the D-th resident warp ahead by global warp id.
+  - A target in another CTA based on that CTA's first warp at the PC (CTA anchoring).
+- **Build:** `4b51495` / `19e3d746`. All 27 runs finished with 0 failed checks.
+
+### Whole run, all configs
+| workload | Tier 1 Snake | SK_R0_D0 | A | B | C | D | E | F | E10 | G8 | G16 | G32 | perfect-L1 ceiling |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| backprop | -0.20% | +0.16% | +0.03% | +0.24% | -0.19% | -0.20% | -0.05% | +0.15% | -0.10% | +0.17% | -0.22% | +0.24% | +41.7% |
+| hotspot 1024 | +0.16% | +0.14% | +0.11% | +0.08% | +0.14% | +0.19% | +0.20% | +0.11% | +0.30% | +0.17% | +0.13% | +0.10% | +0.1% |
+| hotspot 512 | +0.13% | -0.09% | -0.10% | +0.17% | +0.05% | +0.20% | +0.07% | +0.24% | +0.07% | +0.17% | +0.33% | +0.09% | +0.3% |
+| lud 512 | +0.12% | -0.11% | -0.07% | -0.65% | -0.55% | +0.14% | -0.15% | -0.43% | -0.13% | -0.17% | -0.23% | -0.23% | +3.6% |
+| lud 256 | +0.08% | +0.09% | +0.09% | +0.10% | +0.09% | +0.08% | +0.09% | +0.10% | +0.09% | +0.10% | +0.10% | +0.10% | +3.0% |
+| nw | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +16.6% |
+| histo | -1.93% | -3.44% | -4.96% | -3.25% | -3.13% | -1.77% | -1.88% | -1.80% | -1.64% | -1.96% | -1.88% | -2.16% | +39.2% |
+| mri-q | +0.09% | +0.21% | +0.24% | -0.06% | +0.15% | +0.09% | +0.21% | -0.06% | +0.21% | +0.12% | +0.01% | +0.01% | +2.2% |
+| srad_v1 | -0.21% | -0.53% | -1.57% | -0.10% | -0.60% | -1.35% | -0.56% | -0.14% | -0.46% | -0.11% | -0.12% | -0.74% | +20.6% |
+| **GMEAN** (7 apps) | **-0.29%** | **-0.52%** | **-0.91%** | **-0.48%** | **-0.56%** | **-0.42%** | **-0.31%** | **-0.26%** | **-0.26%** | **-0.24%** | **-0.29%** | **-0.38%** | +16.6% |
+
+### Success criteria
+| config | (a) histo ≥ 0 | (b) lowest workload (≥ −1%) | (c) GMEAN > Tier 1 Snake | (d) timely share of used: pooled / mean over workloads | all four |
+|---|---|---|---|---|---|
+| Tier 1 Snake | -1.93% no | -1.93% (histo) no | -0.29% - | 39.1% / 21.4% - | no |
+| SK_R0_D0 | -3.44% no | -3.44% (histo) no | -0.52% no | 38.5% / 24.5% no | no |
+| A | -4.96% no | -4.96% (histo) no | -0.91% no | 34.5% / 22.2% no | no |
+| B | -3.25% no | -3.25% (histo) no | -0.48% no | 40.2% / 26.1% yes | no |
+| C | -3.13% no | -3.13% (histo) no | -0.56% no | 38.1% / 24.2% no | no |
+| D | -1.77% no | -1.77% (histo) no | -0.42% no | 38.3% / 19.7% no | no |
+| E | -1.88% no | -1.88% (histo) no | -0.31% no | 36.6% / 23.9% no | no |
+| F | -1.80% no | -1.80% (histo) no | -0.26% yes | 39.2% / 25.4% yes | no |
+| E10 | -1.64% no | -1.64% (histo) no | -0.26% yes | 34.8% / 22.8% no | no |
+| G8 | -1.96% no | -1.96% (histo) no | -0.24% yes | 39.8% / 20.4% yes | no |
+| G16 | -1.88% no | -1.88% (histo) no | -0.29% no | 34.0% / 14.4% no | no |
+| G32 | -2.16% no | -2.16% (histo) no | -0.38% no | 31.1% / 8.5% no | no |
+
+### histo per kernel, E10 and Phase 4
+| histo kernel (share) | config | IPC gain | issued / demand | unused % | DRAM × | pq wait | wins d:p |
+|---|---|---|---|---|---|---|---|
+| `histo_main_kernel` (66.1%) | E10 | +0.33% | 0.05 | 5 | 1.03 | - | - |
+| `histo_main_kernel` (66.1%) | G8 | +0.60% | 0.04 | 5 | 0.99 | - | - |
+| `histo_main_kernel` (66.1%) | G16 | +0.71% | 0.04 | 6 | 0.99 | - | - |
+| `histo_main_kernel` (66.1%) | G32 | +0.03% | 0.03 | 8 | 0.95 | - | - |
+| `histo_intermediates_kernel` (17.1%) | E10 | +28.26% | 0.59 | 0 | 0.72 | - | - |
+| `histo_intermediates_kernel` (17.1%) | G8 | +23.59% | 0.45 | 0 | 0.74 | - | - |
+| `histo_intermediates_kernel` (17.1%) | G16 | +20.68% | 0.38 | 0 | 0.74 | - | - |
+| `histo_intermediates_kernel` (17.1%) | G32 | +20.95% | 0.38 | 0 | 0.75 | - | - |
+| `histo_final_kernel` (10.2%) | E10 | -15.51% | 0.65 | 25 | 1.21 | - | - |
+| `histo_final_kernel` (10.2%) | G8 | -17.64% | 0.55 | 28 | 1.20 | - | - |
+| `histo_final_kernel` (10.2%) | G16 | -16.41% | 0.48 | 26 | 1.15 | - | - |
+| `histo_final_kernel` (10.2%) | G32 | -15.68% | 0.48 | 26 | 1.15 | - | - |
+| `histo_prescan_kernel` (6.5%) | E10 | -37.47% | 1.51 | 77 | 3.81 | - | - |
+| `histo_prescan_kernel` (6.5%) | G8 | -35.44% | 1.33 | 81 | 3.61 | - | - |
+| `histo_prescan_kernel` (6.5%) | G16 | -34.34% | 1.24 | 85 | 3.55 | - | - |
+| `histo_prescan_kernel` (6.5%) | G32 | -34.24% | 1.24 | 85 | 3.55 | - | - |
+
+### Reading
+- **G8 has the best GMEAN of all configs:** −0.238% vs Tier 1 Snake's −0.288%. It meets (c), and (d) with a pooled timely share of 39.8% vs 39.1%.
+- **G16 and G32 lose.** One target 16 or 32 warps ahead is used less often, and the mean timely share over workloads falls (14.4%, 8.5%).
+- **In histo, G8–G32 help `histo_main_kernel` (up to +0.7%) and `histo_prescan_kernel` (−34 to −35% vs −37.5%).** They cost `histo_intermediates_kernel` (+21 to +24% vs +28%), so histo stays at −1.9 to −2.2%.
+
+## FINAL
+**No config meets (a) and (b).** histo stays between −1.6% and −5.0% vs no prefetching in every config. So the rule "best whole-run GMEAN subject to (a) and (b)" selects nothing.
+- **By GMEAN alone the best is G8:** −0.238%, above Tier 1 Snake (−0.288%). It meets (c) and (d), not (a) or (b).
+- **The config closest to (a) and (b) is E10:** histo −1.64%, GMEAN −0.262%.
+
+### Whole run: Tier 1 Snake, SK_R0_D0, the best by GMEAN (G8), E10 and the perfect-L1 ceiling
+| workload | Tier 1 Snake | SK_R0_D0 | **G8 (best GMEAN)** | E10 (best histo) | perfect-L1 ceiling |
+|---|---|---|---|---|---|
+| backprop | -0.20% | +0.16% | **+0.17%** | -0.10% | +41.7% |
+| hotspot 1024 | +0.16% | +0.14% | **+0.17%** | +0.30% | +0.1% |
+| hotspot 512 | +0.13% | -0.09% | **+0.17%** | +0.07% | +0.3% |
+| lud 512 | +0.12% | -0.11% | **-0.17%** | -0.13% | +3.6% |
+| lud 256 | +0.08% | +0.09% | **+0.10%** | +0.09% | +3.0% |
+| nw | +0.00% | +0.00% | **+0.00%** | +0.00% | +16.6% |
+| histo | -1.93% | -3.44% | **-1.96%** | -1.64% | +39.2% |
+| mri-q | +0.09% | +0.21% | **+0.12%** | +0.21% | +2.2% |
+| srad_v1 | -0.21% | -0.53% | **-0.11%** | -0.46% | +20.6% |
+| **GMEAN** (7 apps) | -0.29% | -0.52% | **-0.24%** | -0.26% | +16.6% |
+
+| criterion | Tier 1 Snake | G8 | E10 |
+|---|---|---|---|
+| (a) histo ≥ 0 | −1.93% | −1.96% no | −1.64% no |
+| (b) no workload below −1% | histo | histo no | histo no |
+| (c) GMEAN > Tier 1 Snake | −0.288% | −0.238% **yes** | −0.262% **yes** |
+| (d) timely share of used, pooled | 39.1% | 39.8% **yes** | 34.8% no |
+
+The headroom is still where D1 put it (perfect-L1 GMEAN +16.6%: backprop +41.7%, histo +39.2%, srad_v1 +20.6%, nw +16.6%). No config gains more than +0.24% on any of those four workloads at the whole-run level (backprop, B).
+
+### Best-performing kernel (diagnostic only)
+Each value is the kernel IPC normalized to the same kernel's IPC without prefetching. The best kernel has the largest gain among kernels with at least 1% of the baseline cycles, over complete launches. A kernel's gain does not predict the run's: histo's best kernel gains 24–42% while every histo run loses.
+
+| workload | Tier 1 Snake | SK_R0_D0 | G8 | E10 |
+|---|---|---|---|---|
+| backprop | `bpnn_layerforward_CUDA` 1.0007 | `bpnn_adjust_weights_cuda` 1.0029 | `bpnn_adjust_weights_cuda` 1.0030 | `bpnn_layerforward_CUDA` 1.0001 |
+| hotspot 1024 | `calculate_temp` 1.0016 | `calculate_temp` 1.0014 | `calculate_temp` 1.0017 | `calculate_temp` 1.0030 |
+| hotspot 512 | `calculate_temp` 1.0013 | `calculate_temp` 0.9991 | `calculate_temp` 1.0017 | `calculate_temp` 1.0007 |
+| lud 512 | `lud_internal` 1.0059 | `lud_perimeter` 1.0005 | `lud_perimeter` 1.0001 | `lud_perimeter` 1.0002 |
+| lud 256 | `lud_internal` 1.0043 | `lud_internal` 1.0051 | `lud_internal` 1.0054 | `lud_internal` 1.0051 |
+| nw | `needle_cuda_shared_1` 1.0000 | `needle_cuda_shared_1` 1.0000 | `needle_cuda_shared_1` 1.0000 | `needle_cuda_shared_1` 1.0000 |
+| histo | `histo_intermediates_kernel` 1.1148 | `histo_intermediates_kernel` 1.4217 | `histo_intermediates_kernel` 1.2359 | `histo_intermediates_kernel` 1.2826 |
+| mri-q | `ComputeQ_GPU` 1.0010 | `ComputeQ_GPU` 1.0022 | `ComputeQ_GPU` 1.0012 | `ComputeQ_GPU` 1.0022 |
+| srad_v1 | `extract` 1.0256 | `extract` 1.0300 | `extract` 1.0248 | `extract` 1.0300 |
+
+### Options of G8 (best GMEAN)
+Config: `QV100-SASS-PAPER_V100-1B_INSN-SNAKE-SNAKE_FP1-SK_SC-SK_SC_CTA-SNAKE_HEAD64-SNAKE_MQR0-SNAKE_DM0-SNAKE_ACCF-SNAKE_ACCFB10K-SNAKE_IWD8`. Effective values come from the run's option dump; later tokens override earlier ones.
+
+| option | G8 | Tier 1 Snake | origin | SPEC |
+|---|---|---|---|---|
+| PAPER_V100, 1B_INSN | GTO, 1530 MHz, 1B | same | paper's V100 setup | §5, OQ-18, OQ-23 |
+| `-snake_enable 1` | Head / Tail tables, inter-thread chains, promotion, inter-warp and intra-warp prediction, throttling | same | **paper Snake** | §1–§3 |
+| `-snake_footprint 1` | exact footprint (the target load's lanes) | same | paper Snake, our reading | OQ-9 |
+| `-snake_tail_entries 10`, `-snake_throttle_enable 1`, `-snake_lane_mode 1`, `-snake_mshr_reserve 8` | as Tier 1 | same | paper Snake (throttling §3.3); lane mode and MSHR reserve our readings | OQ-10, OQ-11, OQ-17 |
+| `-snake_queue_size 128` | 128 | 32 | SnakeCharmer's SK setting | OQ-33 |
+| `-snake_max_chain_depth 10`, `-snake_chain_deep_promoted 1` | depth 10, deeper steps on promoted entries | 3, trained entries | SnakeCharmer's SK setting | OQ-7, OQ-33, OQ-35 |
+| `-snake_intra_distance 8`, `-snake_intra_distance_mode 0` | iterations 1..8 ahead | 1 (next iteration) | SnakeCharmer's SK setting | OQ-34 |
+| `-snake_promote_warps 3`, `-snake_intra_confirm_warps 3`, `-snake_interwarp_min_warps 3` | 3 | 3 | paper Snake (SnakeCharmer's confidence 3 agrees) | OQ-28, OQ-35 |
+| `-snake_head_two_warps 0` | 64-entry per-warp Head | per-PC rows of two warps | SnakeCharmer's Head table | OQ-1b, OQ-37 |
+| `-snake_missq_reserve 0` | no miss-queue slots reserved for demand | 8 | our implementation parameter (SK match Step 1) | OQ-11 |
+| `-snake_decouple_mode 0` | memory decoupling off (throttling stays on) | 1 (unified prefetch region) | **departs from paper Snake** (§3.2 decoupling) | OQ-12 |
+| `-snake_entry_acc_filter 1`, `-snake_acc_filter_min 0.60`, `-snake_acc_filter_block 10000` (window 32, age 1,000) | per-source accuracy filter | off | **our extension** | OQ-39 |
+| `-snake_interwarp_scope 1`, `-snake_interwarp_single 1`, `-snake_interwarp_degree 8`, `-snake_interwarp_cta_anchor 1` | one inter-warp target, the 8th resident warp ahead; other CTAs anchored on their first warp | next 4 warps of the CTA | **our extension** (scope 1 from S6 / OQ-33) | OQ-8, OQ-33, OQ-40 |
+| R2 (`-snake_pq_path`) | off | off | our reading of SnakeCharmer §III-A, tested in Phase 2 (A–C, F), not in G8 | OQ-38 |
+
+### What did not work and why (for the next step)
+- **R2** (OQ-38) changes the injection order, not the volume. histo's loss is the volume of unused prefetches (Phase 0), so R2 leaves it (B, C) or deepens it with Tier 1 Snake (A: `histo_main_kernel` −8.4%).
+- **The accuracy filter** (OQ-39) halves histo's loss with SK settings (−3.44% → −1.64%) but does not stop `histo_prescan_kernel`'s flood. Prescan stays 77–85% unused with 3.5–3.8× DRAM reads in every filtered config, although sources there are stopped often. Other sources keep issuing, and an unused prefetch only counts after 1,000 cycles.
+- **Tier 1 Snake's `histo_main_kernel` loss** (−3.3 to −3.9% over 66% of histo's cycles) comes with only 1% unused prefetches. It is not a flood, and a usefulness filter cannot remove it. Every Tier 1-based config (A, D) stays at histo ≤ −1.77%.
+- **Untested next candidates:**
+  - stop inter-thread chains (and intra-warp prediction) in kernels whose demand is mostly streaming reads read once, as histo's prescan is
+  - make the filter stop a source until it shows accuracy again, instead of for a fixed time
+  - keep filter state across launches of the same kernel (each prescan launch starts untrained)
+
