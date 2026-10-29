@@ -7,7 +7,7 @@
 | 0 Set-up | done 2026-10-29: tag `snake-pre-debug` in both repos (accel-sim `e261d63`, gpgpu-sim `19e3d746`; binary build `4b51495` / `19e3d746` frozen in `/home/razul/snake/bin_pre_debug`); folders created; reference numbers recorded | results/debug/S0_reference.md |
 | 1 Environment parity (H1) | in progress: 1.1 and 1.2 done 2026-10-29 (no runs); 1.3 bug-compatible decoder (`-trace_paperera_decode`, accel-sim `bc03386`, default off) running, 27 runs in `sim_run_snake_debug/s1s2` from 19:41; gates DBG1 passed | results/debug/S1_environment.md |
 | 2 Upper bounds (oracles) | in progress: O-TIME and O-PRED built (gpgpu-sim `37846351`, flags default off); 18 runs in the same batch as 1.3 | |
-| 3 Prefetch lifecycle trace | not started | |
+| 3 Prefetch lifecycle trace | in progress: log built (`-snake_lc_stride`, gpgpu-sim `04bbd427`, default off; token `SNAKE_LC16`); logging on vs off identical on the 11 synthetic runs; 9 runs (`sim_run_snake_debug/s3`, frozen) start after the Stage 1.3/2 batch; analysis `util/snake/debug/s3_lifecycle.py` | |
 | 4 What the programs allow | not started | |
 | 5 Implementation audit | not started | |
 | 6 Fixes | waits for approval | |
