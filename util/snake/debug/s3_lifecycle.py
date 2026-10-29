@@ -35,6 +35,8 @@ line, cycles are GPU core cycles):
                                        request, p merged into an in-flight
                                        prefetch, d merged into a demand
   R sid cyc uid                        its data left the L1D for writeback
+  L sid cyc w gw pc addr ok            a load Snake observed (ok: it passed
+                                       the lane filter); Stage 4 uses these
 """
 import collections
 import glob
