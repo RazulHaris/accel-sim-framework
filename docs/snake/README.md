@@ -257,6 +257,6 @@ Gates:
 - **No config meets (a) and (b):** histo stays at −1.6 to −5.0%.
 - **Tables:** `util/snake/fix_report.py`; per-kernel diagnosis: `util/snake/kernel_diag.py`. Best-kernel view (diagnostic) in the results file.
 
-**Debug plan (2026-10-29).** `DEBUG_PLAN.md` (the A-to-Z plan with a status line per stage); results in `results/debug/`, scripts in `util/snake/debug/`. Stage 0 done: tag `snake-pre-debug` in both repos, reference numbers in `results/debug/S0_reference.md`.
+**Debug plan (2026-10-29).** `DEBUG_PLAN.md` (the A-to-Z plan with a status line per stage); results in `results/debug/`, scripts in `util/snake/debug/`. Stage 0 done: tag `snake-pre-debug` in both repos, reference numbers in `results/debug/S0_reference.md`. Stage 1 (environment parity): 1.1 and 1.2 done, in `results/debug/S1_environment.md` (scripts `s1_env.py`, `s1_cfgdiff.py`). Our corrected baseline is much less memory-bound than the paper's (Figs. 3-5 and 25, worst on hotspot, lud and mri-q), and no option difference against v1.2.0 explains it. 1.3 (bug-compatible decoder, `PAPERERA` token) and Stage 2 (oracles, `ORACLE_TIME` / `ORACLE_PRED`) are running in `sim_run_snake_debug/s1s2`, 45 runs. Build accel-sim `bc03386` + gpgpu-sim `37846351`; all new flags default off; gates DBG1 passed. New stat line `W0_Scoreboard_memory` (Fig. 5 counter).
 
 **Next:** your go-ahead on Phase 1. Tier 2 (117 jobs) also still awaits approval. SK match Steps 3–4 (ceilings, bfs diagnosis) await approval. For histo, the untested next candidates are in `results/fix_today.md` ("What did not work").
