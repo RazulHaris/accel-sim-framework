@@ -417,6 +417,10 @@ ORACLE_TIME:
     extra_params: "-snake_oracle_time 1"
 ORACLE_PRED:
     extra_params: "-snake_oracle_pred 1"
+# Debug plan Stage 3: prefetch lifecycle log (snake_lc.txt.gz in the run
+# directory) from SMs 0, 16, 32, 48 and 64; no behaviour change.
+SNAKE_LC16:
+    extra_params: "-snake_lc_stride 16"
 SNAKE_ACCFB10K:
     extra_params: "-snake_acc_filter_block 10000"
 # OQ-40 (our extension; fix_today Phase 4): one inter-warp target, the D-th
