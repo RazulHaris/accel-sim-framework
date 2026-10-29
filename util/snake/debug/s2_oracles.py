@@ -43,6 +43,14 @@ def counters(p):
     return {k: int(v) for k, v in re.findall(r"^snake_(\w+) = (\d+)\s*$", t, re.M)}
 
 
+def l1_hit(p):
+    """GLOBAL_ACC_R HIT / TOTAL_ACCESS, %."""
+    t = open(p, errors="replace").read()
+    g = lambda s: (lambda m: int(m[-1]) if m else 0)(re.findall(
+        r"Total_core_cache_stats_breakdown\[GLOBAL_ACC_R\]\[%s\] = (\d+)" % s, t))
+    return 100.0 * g("HIT") / g("TOTAL_ACCESS") if g("TOTAL_ACCESS") else None
+
+
 def f(x, d=1, sign=True):
     return "n/a" if x is None else ("%+.*f" if sign else "%.*f") % (d, x)
 
@@ -66,6 +74,13 @@ def main():
         out.append("| %s | %s |" % (R.wl_label(a, g), " | ".join(f(gains[v][(R.app_of(a), g)]) for v, _, _ in VERS)))
     gmean = {v: gm_apps(gains[v]) for v, _, _ in VERS}
     out.append("| **GMEAN, 7 apps** | %s |" % " | ".join("**%s**" % f(gmean[v]) for v, _, _ in VERS))
+    out += ["\nL1 hit rate (GLOBAL_ACC_R, %), whole run:\n",
+            "| workload | no prefetching | " + " | ".join(v for v, _, _ in VERS[:3]) + " |", "|---|---|---|---|---|"]
+    for a, g in WL:
+        b = sim(BASE[0], a, g, BASE[1])
+        cells = [l1_hit(b) if done(b) else None] + [
+            l1_hit(sim(d, a, g, c)) if done(sim(d, a, g, c)) else None for _, d, c in VERS[:3]]
+        out.append("| %s | %s |" % (R.wl_label(a, g), " | ".join(f(x, 1, False) for x in cells)))
     out += ["\nOracle mechanics per workload (whole run): prefetches issued per demand sector, timely uses and "
             "late merges per demand sector (%), installs that found the sector already present or no line, and "
             "memory copies dropped because the miss queue was full.\n",
