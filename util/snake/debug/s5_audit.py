@@ -56,6 +56,7 @@ def audit(path):
     born_late = born = 0
     bad9 = []
     p_merges = 0
+    kinds = collections.Counter()
     with gzip.open(path, "rt") as fh:
         for line in fh:
             if line[0] == "#":
@@ -81,6 +82,7 @@ def audit(path):
                     open_miss[key] += 1
                 elif f[6] == "p":
                     p_merges += 1
+                kinds[f[6]] += 1
                 miss_uid[int(f[3])] = (key, f[6])
             elif t == "R":
                 m = miss_uid.pop(int(f[3]), None)
@@ -129,7 +131,8 @@ def audit(path):
         else:
             iwc["ahead"] += 1
     lost = collections.Counter(kind for _, kind in miss_uid.values())
-    return dict(iw=iwc, dup=dup, born=born, born_late=born_late, bad9=bad9, lost=lost, p_merges=p_merges)
+    return dict(iw=iwc, dup=dup, born=born, born_late=born_late, bad9=bad9, lost=lost, p_merges=p_merges,
+                kinds=kinds)
 
 
 def main():
@@ -223,12 +226,19 @@ def main():
             pc_(s.get("lane_runs_16", 0), n), pc_(s.get("lane_runs_8", 0), n), pc_(s.get("lane_runs_4", 0), n)))
     out += ["\n## Metric: SnakeCharmer late loads (whole run and log)\n",
             "| workload | sc_ld_ontime | sc_ld_late (first merge per prefetch) | sc_ld_miss (all MISS returns) | "
-            "cov_on as reported | cov_on, late not counted twice | log: loads merged into a prefetch |",
-            "|---|---|---|---|---|---|---|"]
+            "cov_on as reported: on / (on + late + miss) | late counted once: on / (on + miss) | SPEC OQ-36 (M = new "
+            "requests), estimated: on / (on + late + miss x new share) | log: MISS returns that are new / merged into "
+            "a prefetch / merged into a demand (%) |",
+            "|---|---|---|---|---|---|---|---|"]
     for lbl, a, s in rows:
         on, late, miss = s.get("sc_ld_ontime", 0), s.get("sc_ld_late", 0), s.get("sc_ld_miss", 0)
-        out.append("| %s | %d | %d | %d | %s | %s | %d |" % (
-            lbl, on, late, miss, pc_(on, on + late + miss), pc_(on, on + miss), a["p_merges"]))
+        k = a["kinds"]
+        nk = sum(k.values())
+        new = k["n"] / float(nk) if nk else None
+        out.append("| %s | %d | %d | %d | %s | %s | %s | %s |" % (
+            lbl, on, late, miss, pc_(on, on + late + miss), pc_(on, on + miss),
+            pc_(on, on + late + miss * new) if new is not None else "n/a",
+            " / ".join(pc_(k[x], nk) for x in "npd")))
     print("\n".join(out))
 
 
