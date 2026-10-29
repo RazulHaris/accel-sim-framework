@@ -35,7 +35,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from s3_lifecycle import CFG, RUNS, ROOT, pct, fmt  # noqa: E402
+from s3_lifecycle import CFG, RUNS, ROOT, finished, pct, fmt  # noqa: E402
 
 
 def stats(sim):
@@ -136,7 +136,7 @@ def main():
     runs = sys.argv[1] if len(sys.argv) > 1 else RUNS
     cfg = sys.argv[2] if len(sys.argv) > 2 else CFG
     rows = []
-    for lg in sorted(glob.glob(os.path.join(runs, "*", "*", cfg, "snake_lc.txt.gz"))):
+    for lg in sorted([p for p in glob.glob(os.path.join(runs, "*", "*", cfg, "snake_lc.txt.gz")) if finished(p)]):
         d = os.path.dirname(lg)
         app_dir, args = d.split(os.sep)[-3:-1]
         label = app_dir.replace("-rodinia-3.1", "").replace("parboil-", "") + " " + args[:10]
