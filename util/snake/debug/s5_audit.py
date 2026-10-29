@@ -166,6 +166,18 @@ def main():
             pc_(s.get("throttled_cycles_bw", 0), ticks), s.get("throttle_space_events", 0),
             s.get("throttle_bw_events", 0),
             pc_(sum(s.get("bw_util_hist_%d" % k, 0) for k in (70, 80, 90, 100)), win)))
+    out += ["\n## Item 5: decoupling costs to demand data (whole run)\n",
+            "| workload | L1 capped, untrained (% of Snake cycles) | L1 capped, confined while throttled (%) | "
+            "demand lines evicted for the cap (per 1,000 demand sectors) | demand-fetched sectors evicted by a "
+            "prefetch allocation (% of victim sectors) | unused prefetches evicted from prefetch-region lines | "
+            "from L1-region lines |", "|---|---|---|---|---|---|---|"]
+    for lbl, a, s in rows:
+        ticks, dem = s.get("hook_tick", 0), s.get("demand_sector_accesses", 0)
+        out.append("| %s | %s | %s | %s | %s | %d | %d |" % (
+            lbl, pc_(s.get("l1_cap_cycles_untrained", 0), ticks), pc_(s.get("l1_cap_cycles_confine", 0), ticks),
+            fmt(1000.0 * s.get("l1_quota_victims", 0) / dem if dem else None, 2),
+            pc_(s.get("sc_victim_demand_by_pf", 0), s.get("sc_victim_sectors", 0)),
+            s.get("evict_pf_protected", 0), s.get("evict_pf_unprotected", 0)))
     out += ["\n## Item 6: inter-warp targets (log)\n",
             "| workload | inter-warp predictions | ahead (%) | already passed the PC (%) | never execute it later (%) | "
             "other CTA (%) |", "|---|---|---|---|---|---|"]
