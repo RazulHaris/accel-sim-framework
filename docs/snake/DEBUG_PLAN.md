@@ -7,9 +7,9 @@
 | 0 Set-up | done 2026-10-29: tag `snake-pre-debug` in both repos (accel-sim `e261d63`, gpgpu-sim `19e3d746`; binary build `4b51495` / `19e3d746` frozen in `/home/razul/snake/bin_pre_debug`); folders created; reference numbers recorded | results/debug/S0_reference.md |
 | 1 Environment parity (H1) | done 2026-10-29: our baseline is far less memory-bound than the paper's (Figs. 3-5, 25); no option difference (1.2) and not the decoder (1.3, 27 runs: Tier 1 −0.49% GMEAN bug-compatible vs −0.29% corrected) explains it. **G1: the decoder is not the gap** | results/debug/S1_environment.md |
 | 2 Upper bounds (oracles) | done 2026-10-29: 18 runs; O-TIME −0.5%, O-PRED +1.5% GMEAN vs Tier 1 −0.3%, perfect L1 +16.6%. **G2 fails both** (timeliness and issue-loss fixes not worth pursuing): Stages 3-5 only rule out bugs, Stage 6 skips the extensions | results/debug/S2_oracles.md |
-| 3 Prefetch lifecycle trace | in progress: log built (`-snake_lc_stride`, gpgpu-sim `04bbd427`, default off; token `SNAKE_LC16`); logging on vs off identical on the 11 synthetic runs; 9 runs (`sim_run_snake_debug/s3`, frozen) start after the Stage 1.3/2 batch; analysis `util/snake/debug/s3_lifecycle.py` | |
-| 4 What the programs allow | not started | |
-| 5 Implementation audit | not started | |
+| 3 Prefetch lifecycle trace | done 2026-10-29: 9 runs (`sim_run_snake_debug/s3`, reproduce Tier 1 exactly). 3a: 62% of matched predictions never issued (queue full 21%, still queued 26%, in L1/in flight 6%, no resource 9%); issued ones 11% timely, 26% late. 3b: lead 12-30 cycles vs 175-2,596 latency. 3c: no late-merge penalty (H7 rejected) | results/debug/S3_lifecycle.md |
+| 4 What the programs allow | done 2026-10-29 (no runs): a warp's loads are back to back (H3, 5 of 7 apps); the next warps of a CTA reach a PC almost together (H4); the headroom kernels (backprop `adjust_weights`, srad_v1 `srad2`, histo `intermediates`, nw) get almost no issued prefetch | results/debug/S4_spacing.md |
+| 5 Implementation audit | done 2026-10-29: no IPC-affecting bug; one stats bug fixed (SnakeCharmer coverage counted late loads twice; report scripts and OQ-36); findings: inter-warp targets 30-54% already past the PC, Tail thrash (backprop, srad_v1), nw never trains, lane filter | results/debug/S5_audit.md |
 | 6 Fixes | waits for approval | |
 | 7 Write-up | not started | |
 

@@ -89,6 +89,9 @@ class Run:
         self.qwait = collections.defaultdict(list)   # mode -> offered - queue entry created
         self.mlat = collections.defaultdict(list)    # mode -> filled - issued
         self.dlat = collections.defaultdict(list)    # (kernel, kind) -> demand data back - access
+        # 3c split of a demand merged into a prefetch: (L2 hit of the prefetch) ->
+        # [(merge -> prefetch fill, fill -> data back)]
+        self.wake = collections.defaultdict(list)
         self.events = 0
 
 
@@ -96,6 +99,8 @@ def parse(path):
     r = Run()
     kern, thr = {}, {}
     qmode, imode, pend = {}, {}, {}
+    pmerge = collections.defaultdict(list)  # (sid, sector) -> [(uid, merge cycle)] waiting for the fill
+    pfill = {}                              # uid -> (merge cycle, fill cycle, L2 hit)
     with gzip.open(path, "rt") as fh:
         for line in fh:
             if line[0] == "#":
@@ -107,10 +112,15 @@ def parse(path):
             t, sid, cyc = f[0], int(f[1]), int(f[2])
             if t == "M":
                 pend[int(f[3])] = (cyc, f[6], kern.get(sid, -1))
+                if f[6] == "p":
+                    pmerge[(sid, int(f[4]))].append((int(f[3]), cyc))
             elif t == "R":
                 m = pend.pop(int(f[3]), None)
                 if m:
                     r.dlat[(m[2], m[1])].append(cyc - m[0])
+                w = pfill.pop(int(f[3]), None)
+                if w:
+                    r.wake[w[2]].append((w[1] - w[0], cyc - w[1]))
             elif t == "P":
                 mode, line_a, mask, res, new = int(f[8]), int(f[14]), int(f[15]), f[16], int(f[17])
                 r.pred[(mode, res)] += 1
@@ -130,6 +140,8 @@ def parse(path):
                 sec, issue, late, l2 = int(f[3]), int(f[4]), int(f[5]), int(f[6])
                 mode = imode.pop(sec, -1)
                 r.fill[(mode, late, l2 == 0)] += 1
+                for uid, mc in pmerge.pop((sid, sec), []):
+                    pfill[uid] = (mc, cyc, l2 == 0)
                 r.mlat[mode].append(cyc - issue)
             elif t == "U":
                 c, pcyc, mode, src = int(f[5]), int(f[6]), int(f[7]), int(f[8])
@@ -310,8 +322,21 @@ def main():
         out.append("\n### 3c Demand read latency, access to data back (cycles), top kernels by reads\n")
         t, flags = merge_table(r, names)
         out += t
-        out.append("\n3c check (a demand merged into a prefetch must not wait longer than a new miss): %s\n" % (
-            "**FLAG** " + "; ".join("kernel %d median %d vs %d" % f for f in flags) if flags else "pass (medians)"))
+        out.append("\nDemands merged into a prefetch, split at the prefetch's fill (cycles; all kernels):\n")
+        out.append("| prefetch in L2 | n | merge to fill p50 | p90 | fill to data back p50 | p90 | max |")
+        out.append("|---|---|---|---|---|---|---|")
+        for hit in (True, False):
+            v = r.wake.get(hit, [])
+            if v:
+                a, b = sorted(x[0] for x in v), sorted(x[1] for x in v)
+                out.append("| %s | %d | %s | %s | %s | %s | %d |" % ("hit" if hit else "miss", len(v), fmt(pct(a, 50), 0),
+                                                              fmt(pct(a, 90), 0), fmt(pct(b, 50), 0),
+                                                              fmt(pct(b, 90), 0), b[-1]))
+        wk = sorted(x[1] for v in r.wake.values() for x in v)
+        out.append("\n3c check (a demand merged into a prefetch must not wait longer than a new miss): medians %s; "
+                   "wake-up after the fill p50 %s, p90 %s, max %s cycles.\n" % (
+                       "**higher** in " + "; ".join("kernel %d (%d vs %d)" % f for f in flags) if flags else "not higher",
+                       fmt(pct(wk, 50), 0), fmt(pct(wk, 90), 0), wk[-1] if wk else "n/a"))
         summary.append((label, w, r, flags))
     print("\n".join(out))
 

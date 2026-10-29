@@ -16,8 +16,10 @@ with prefix QV100-SASS-PAPER_V100-100M_INSN (PAPER_V100: GTO, 1530 MHz) or
 QV100-SASS-100M_INSN (base QV100: LRR, 1132 MHz, SnakeCharmer's V100).
 
 Metrics (32 B sectors, demand loads):
-  coverage_sc   H / (H + M); H = on-time (+ late) uses, M = loads that sent a
-                new request (+ late uses when they are not counted in H)
+  coverage_sc   H / (H + M); H = on-time (+ late) uses, M = loads whose access
+                returned MISS: new requests and loads merged into an MSHR
+                entry, late uses included (debug plan S5: snake_sc_ld_miss
+                already holds the late loads, so they are not added again)
   accuracy_sc   (on-time uses + fills a load had merged into) / prefetch fills
   timeliness    on-time / too-early / too-late among used prefetches; too
                 early = first load to a sector evicted unused (same kernel)
@@ -76,8 +78,10 @@ def metrics(s):
     # late prefetch still in flight at the end has not filled yet
     late_fills = fills - s["pf_filled"]
     return {
-        "cov_on": pct(on, on + late + miss),
-        "cov_late": pct(on + late, on + late + miss),
+        # sc_ld_miss counts every MISS return, merges into an in-flight
+        # prefetch (the late loads) included (debug plan S5 audit)
+        "cov_on": pct(on, on + miss),
+        "cov_late": pct(on + late, on + miss),
         "acc": pct(on + late_fills, fills),
         "t_on": pct(on, used), "t_early": pct(early, used),
         "t_late": pct(late, used),

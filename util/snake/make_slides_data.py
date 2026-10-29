@@ -375,8 +375,8 @@ def slide2_4(d):
     skc_sets = sorted({run_dir_of(runs[(a, g, "base")][0]) for a, g in wl})
     srcs = lambda lab, ws: "%s/runs/*/*/%s (%d jobs); no prefetching: %s/runs/*/*/%s" % (
         SKM, cfg_of[lab], len(ws), " + ".join(skc_sets), Q)
-    HOW = {"cov_on": "sc_ld_ontime / (sc_ld_ontime + sc_ld_late + sc_ld_miss)",
-           "cov_late": "(sc_ld_ontime + sc_ld_late) / (sc_ld_ontime + sc_ld_late + sc_ld_miss)",
+    HOW = {"cov_on": "sc_ld_ontime / (sc_ld_ontime + sc_ld_miss)",
+           "cov_late": "(sc_ld_ontime + sc_ld_late) / (sc_ld_ontime + sc_ld_miss)",
            "acc": "(sc_ld_ontime + sc_pf_fills - pf_filled) / sc_pf_fills",
            "t_on": "sc_ld_ontime / (sc_ld_ontime + sc_ld_late + sc_ld_early)",
            "t_early": "sc_ld_early / (sc_ld_ontime + sc_ld_late + sc_ld_early)",
@@ -589,10 +589,11 @@ def footnotes(d):
          "results/D1_ceilings.md §3"],
         ["metric", "L1 hit rate", "demand L1D hit rate: Total_core_cache_stats_breakdown[GLOBAL_ACC_R][HIT] / "
          "[TOTAL_ACCESS]; the paper's is the Fig. 25 average over its 11 apps", "final_tier1.md §3; " + S + " §5"],
-        ["metric", "coverage_sc, on-time only", "on-time uses / (on-time + late + miss): sc_ld_ontime / "
-         "(sc_ld_ontime + sc_ld_late + sc_ld_miss); SnakeCharmer's H / (H + M) with late uses in M",
+        ["metric", "coverage_sc, on-time only", "on-time uses / (on-time + miss): sc_ld_ontime / "
+         "(sc_ld_ontime + sc_ld_miss); SnakeCharmer's H / (H + M). sc_ld_miss already holds the late uses "
+         "(every MISS return, MSHR merges included; debug plan S5)",
          S + " OQ-36"],
-        ["metric", "coverage_sc, incl. late", "(on-time + late) / (on-time + late + miss): the same with late uses "
+        ["metric", "coverage_sc, incl. late", "(on-time + late) / (on-time + miss): the same with late uses "
          "in H. SnakeCharmer does not say which it counts", S + " OQ-36"],
         ["metric", "accuracy_sc", "(on-time uses + fills a load had merged into) / prefetch fills: (sc_ld_ontime + "
          "sc_pf_fills - pf_filled) / sc_pf_fills", S + " OQ-36"],
