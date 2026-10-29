@@ -409,6 +409,11 @@ bool trace_warp_inst_t::parse_from_trace_struct(
 trace_config::trace_config() {}
 
 void trace_config::reg_options(option_parser_t opp) {
+  option_parser_register(opp, "-trace_paperera_decode", OPT_BOOL,
+                         &g_trace_paperera_decode,
+                         "decode pre-756ed33 base+delta trace lines as "
+                         "Accel-Sim v1.2.0 did (debug plan Stage 1.3)",
+                         "0");
   option_parser_register(opp, "-trace", OPT_CSTR, &g_traces_filename,
                          "traces kernel file"
                          "traces kernel file directory",

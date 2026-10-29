@@ -407,6 +407,16 @@ SNAKE_ACCF:
     \n-snake_acc_filter_min 0.60"
 # OQ-39 with a 10,000-cycle stop (about one histo prescan launch); use after
 # SNAKE_ACCF
+# Debug plan (docs/snake/DEBUG_PLAN.md).  Stage 1.3: decode pre-756ed33
+# base+delta trace lines as Accel-Sim v1.2.0 did (the bug fixed in fe8f37e).
+# Stage 2 oracles: O-TIME fills every issued prefetch at once, O-PRED every
+# predicted sector; a copy still goes to memory.
+PAPERERA:
+    extra_params: "-trace_paperera_decode 1"
+ORACLE_TIME:
+    extra_params: "-snake_oracle_time 1"
+ORACLE_PRED:
+    extra_params: "-snake_oracle_pred 1"
 SNAKE_ACCFB10K:
     extra_params: "-snake_acc_filter_block 10000"
 # OQ-40 (our extension; fix_today Phase 4): one inter-warp target, the D-th

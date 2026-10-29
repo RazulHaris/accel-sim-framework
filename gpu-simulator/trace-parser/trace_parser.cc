@@ -133,6 +133,7 @@ void inst_memadd_info_t::base_delta_decompress(
 }
 
 static unsigned long long g_legacy_base_delta_lines = 0;
+bool g_trace_paperera_decode = false;
 
 unsigned long long legacy_base_delta_lines() {
   return g_legacy_base_delta_lines;
@@ -229,7 +230,8 @@ bool inst_trace_t::parse_from_string(std::string trace, unsigned trace_version,
       std::vector<long long> deltas;
       // read addresses as base address and deltas
       ss >> std::hex >> base_address;
-      if (trace_version <= 3 && mask_bits.count() < WARP_SIZE) {
+      if (!g_trace_paperera_decode && trace_version <= 3 &&
+          mask_bits.count() < WARP_SIZE) {
         // A pre-756ed33 line has 31 deltas and nothing after them (version 3
         // traces have no immediate field); any other line is decoded below
         // exactly as before.

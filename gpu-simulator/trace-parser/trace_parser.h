@@ -166,4 +166,10 @@ class trace_parser {
 // this run.
 unsigned long long legacy_base_delta_lines();
 
+// Debug plan Stage 1.3 (docs/snake/DEBUG_PLAN.md): -trace_paperera_decode 1
+// decodes pre-756ed33 base+delta lines as Accel-Sim v1.2.0 did (one delta
+// per printed lane, i.e. without the fix of legacy_base_delta_decompress).
+// Default 0: the corrected decoding.
+extern bool g_trace_paperera_decode;
+
 #endif

@@ -31,6 +31,8 @@ int main(int argc, const char **argv) {
 
   printf("accel-sim: pre-756ed33 base+delta trace lines re-decoded = %llu\n",
          legacy_base_delta_lines());
+  if (g_trace_paperera_decode)  // debug plan Stage 1.3
+    printf("accel-sim: -trace_paperera_decode 1 (v1.2.0 decoding)\n");
 
   // we print this message to inform the gpgpu-simulation stats_collect script
   // that we are done

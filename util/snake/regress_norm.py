@@ -9,6 +9,8 @@ Removes only:
   * the -snake_* lines that gpgpu-sim's option dump gains from the new options,
     and the -gpgpu_perfect_l1d line (D1 ceiling option, default off)
     (OptionParser::Print, src/option_parser.cc:422);
+  * the debug plan's new lines: the -trace_paperera_decode option (Stage
+    1.3, default off) and the W0_Scoreboard_memory counter (Stage 1.1);
   * with --strip-snake-block, Snake's own stats block (a blank line,
     "Snake prefetcher:", snake_* lines), which only exists with Snake on.
 and sorts every run of consecutive "  mf: uid=" lines: memory_sub_partition::
@@ -23,7 +25,7 @@ import re
 import sys
 
 VOLATILE = re.compile(
-    r"^-snake_|^-gpgpu_perfect_l1d |gpgpu_simulation_time|gpgpu_simulation_rate|gpu_total_sim_rate|"
+    r"^-snake_|^-gpgpu_perfect_l1d |^-trace_paperera_decode |^W0_Scoreboard_memory:|gpgpu_simulation_time|gpgpu_simulation_rate|gpu_total_sim_rate|"
     r"gpgpu_silicon_slowdown|Accel-Sim \[build|GPGPU-Sim.*build |"
     r"accelsim-commit-|gpgpu-sim_git-commit-|"
     r"/accel-sim\.out|/libcudart"
