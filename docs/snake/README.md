@@ -257,4 +257,6 @@ Gates:
 - **No config meets (a) and (b):** histo stays at −1.6 to −5.0%.
 - **Tables:** `util/snake/fix_report.py`; per-kernel diagnosis: `util/snake/kernel_diag.py`. Best-kernel view (diagnostic) in the results file.
 
+**Debug plan (2026-10-29).** `DEBUG_PLAN.md` (the A-to-Z plan with a status line per stage); results in `results/debug/`, scripts in `util/snake/debug/`. Stage 0 done: tag `snake-pre-debug` in both repos, reference numbers in `results/debug/S0_reference.md`.
+
 **Next:** your go-ahead on Phase 1. Tier 2 (117 jobs) also still awaits approval. SK match Steps 3–4 (ceilings, bfs diagnosis) await approval. For histo, the untested next candidates are in `results/fix_today.md` ("What did not work").
