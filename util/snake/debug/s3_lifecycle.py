@@ -70,6 +70,7 @@ def pct(v, q):
 class Run:
     def __init__(self):
         self.cls = collections.Counter()      # (src, class) of each prediction record
+        self.cls_k = collections.Counter()    # (kernel uid, class), for Stage 4d
         self.queued_thr = collections.Counter()  # src -> queued at demand while throttled
         self.pred = collections.Counter()     # (mode, res) -> P events
         self.pred_sec = collections.Counter()  # (mode, res) -> sectors named
@@ -127,11 +128,13 @@ def parse(path):
             elif t == "U":
                 c, pcyc, mode, src = int(f[5]), int(f[6]), int(f[7]), int(f[8])
                 r.cls[(src, c)] += 1
+                r.cls_k[(kern.get(sid, -1), c)] += 1
                 if c == 0 and thr.get(sid):
                     r.queued_thr[src] += 1
                 r.lead[mode].append(cyc - pcyc)
             elif t == "X":
                 r.cls[(int(f[7]), int(f[4]))] += 1
+                r.cls_k[(kern.get(sid, -1), int(f[4]))] += 1
             elif t == "D":
                 line_a, mask = int(f[3]), int(f[4])
                 r.drop[f[5]] += popcount(mask)
